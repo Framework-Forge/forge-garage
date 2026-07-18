@@ -1,0 +1,153 @@
+{
+    "notify": {
+        "error": {
+            "no_parking_spot": "Não há espaço suficiente para estacionamento!",
+            "not_veh_exist": "Não há veículos perto de você!",
+            "not_enough_cash": "Você não tem dinheiro suficiente no seu bolso!",
+            "not_enough_bank": "Não há dinheiro suficiente na sua conta bancária!",
+            "not_owned" : "Este veículo não é seu!",
+            "is_service_garage" : "Você não pode guardar seu veículo em uma garagem de trabalho.",
+            "npc_vehicle" : "Não é possível confiscar veículos ilegais!",
+            "need_money" : "Você precisa de R$%s para fazer isso",
+            "swapgarage": "Ocorreu um problema!",
+            "player_offline" : "Não há jogador com o id %s",
+            "cannot_transfer_to_myself": "Não é possível transferir para si mesmo!",
+            "no_available_policeimpound_location": "Locais de garagem para veículos confiscados ainda não estão disponíveis! Peça ao desenvolvedor do servidor para criá-los."
+        },
+        "info": {
+            "invalid_veh_classs": "Veículos com esta classe não podem ser armazenados em %s!"
+        },
+        "success": {
+            "store_veh": "O veículo foi armazenado com sucesso na garagem!",
+            "swapgarage" : "O veículo foi movido com sucesso para a garagem %s.",
+            "transferveh": {
+                "target": "%s acabou de lhe dar um veículo, você pode verificá-lo em %s",
+                "source": "O veículo foi transferido com sucesso para %s"
+            },
+            "confiscate_vehicle": "O veículo de %s foi confiscado e armazenado no %s.",
+            "locate_vehicle": "Veículo localizado com sucesso!"
+        },
+        "admin": {
+            "success_create": "Nova garagem criada com sucesso com o rótulo %s",
+            "success_deleted": "Garagem com o rótulo %s foi deletada com sucesso",
+            "success_changelocation": "Localização da garagem atualizada com sucesso",
+            "success_changelabel": "Rótulo da garagem alterado para %s",
+            "success_deleted_access": "Acesso removido com sucesso",
+            "success_added_access": "Acesso adicionado com sucesso para %s",
+            "success_editblip": "Blip atualizado com sucesso",
+            "success_deletedBlip": "Blip deletado com sucesso"
+        }
+    },
+    "progressbar": {
+        "confiscate_vehicle": "Confiscando um veículo"
+    },
+    "target": {
+        "confiscate_veh": "Confiscar Veículo"
+    },
+    "context": {
+        "insurance": {
+            "pay_methode_header" : "Selecione o tipo de pagamento",
+            "pay_methode_cash_title" : "Usar dinheiro no bolso",
+            "pay_methode_bank_title" : "Usar cartão de crédito",
+            "pay_methode_cash_desc" : "Pagar usando o dinheiro no bolso",
+            "pay_methode_bank_desc" : "Pagar usando economias bancárias"
+        },
+        "garage": {
+            "owner_label": "Proprietário: %s",
+            "change_veh_name" : "Alterar Nome do Veículo",
+            "swapgarage" : "Trocar Garagem",
+            "transferveh_title" : "Transferir Veículo",
+            "vehicle_keys": "Tirar cópia da Chave"
+        },
+        "admin": {
+            "addnewgarage": "Adicionar Nova Garagem (Apenas Admin)",
+            "listgarage_title": "Lista de Garagens",
+            "listgarage_description": "Tipo de Garagem: %s | Tipo de Classe: %s",
+            "options_delete": "Deletar Garagem",
+            "options_changelocation": "Editar Localização da Garagem",
+            "options_changelabel": "Editar Rótulo da Garagem",
+            "job_title": "Trabalhos",
+            "gang_title": "Gangues",
+            "job_description": "Nome: %s | Rank: %s",
+            "gang_description": "Nome: %s | Rank: %s",
+            "delete": "Deletar",
+            "add_job": "Adicionar Trabalho",
+            "add_gang": "Adicionar Gangue",
+            "blip_setting": "Configuração de Blip",
+            "blip_edit": "Editar Blip",
+            "blip_remove": "Remover Blip",
+            "tptoloc": "Teletransportar para Localização"
+        },
+        "policeImpound": {
+            "not_paid": "não pago ainda",
+            "vehdescription": "Multa: %s | Status da Multa: %s",
+            "sendBill": "Enviar Fatura",
+            "takeOutVeh": "Retirar Veículo",
+            "paid": "já pago"
+        }
+    },
+    "input": {
+        "garage": {
+            "change_veh_name" : "Digite o Novo Nome",
+            "swapgarage": "trocar para qual garagem?"
+        },
+        "police_impound": {
+            "veh_owner": "Proprietário do Veículo",
+            "veh_fine": "Multa",
+            "fine_header": "Olá %s👋",
+            "fine_content": "Você é solicitado a pagar a fatura do seu veículo que foi confiscado pela polícia no valor de $%s",
+            "fine_pay": "Pagar",
+            "fine_ignore": "Ignorar",
+            "confiscate_garage_loc": "Onde você quer que seja confiscado?",
+            "confiscate_until": "Confiscado Até?"
+        },
+        "admin": {
+            "creator_labelgarage": "Rótulo da Garagem",
+            "creator_typevehicle": "Tipo de Veículo",
+            "creator_bliptype": "Tipo de Blip",
+            "creator_blipcolor": "Cor do Blip",
+            "creator_bliplabel": "Nome do Blip",
+            "header_changelabel": "Editar Rótulo da Garagem",
+            "label_changelabel": "Novo Rótulo",
+            "garage_access": "Acesso à Garagem",
+            "garage_access_job": "Nome do Trabalho",
+            "garage_access_grade_job": "Rank do Trabalho",
+            "garage_access_gang": "Nome da Gangue",
+            "garage_access_grade_gang": "Rank da Gangue"
+        }
+    },
+    "garage": {
+        "open": "Abrir Garagem",
+        "store": "Salvar Veículo",
+        "no_vehicles": "Sem Veículos",
+        "take_out_veh": "Retirar",
+        "find_veh": "Localizar veículo",
+        "access_impound": "Abrir Seguro",
+        "impound_price": "Taxa de seguro $%s",
+        "pay_impound": "Pagar taxas de seguro",
+        "success_pay_impound": "Taxa de seguro paga com sucesso!"
+    },
+    "status": {
+        "in": "Na Garagem",
+        "out": "Fora da Garagem",
+        "insurance": "No Seguro",
+        "confiscated": "Confiscado pela Polícia"
+    },
+    "command": {
+        "admin": {
+            "garagelist": "garagelist",
+            "garagelistHelp": "Ver lista de todas as garagens (Apenas Admin)"
+        }
+    },
+    "createzone": {
+        "1": "------ Criador de Zona ------  \n",
+        "2": "Coord X [Esquerda/Direita]: %s  \n",
+        "3": "Coord Y [Cima/Baixo]: %s  \n",
+        "4": "Coord Z [R/F]: %s  \n",
+        "5": "Altura [Shift + Scroll]: %s  \n",
+        "6": "Criar novo ponto - [Espaço]  \n",
+        "7": "Editar último ponto - [Backspace]  \n",
+        "8": "Salvar - [Enter]  \n",
+        "9": "Cancelar - [Esc]  \n"
+    }
+}
