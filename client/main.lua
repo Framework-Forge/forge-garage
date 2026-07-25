@@ -1,5 +1,5 @@
 local VehicleShow = nil
-local Deformation = require 'modules.deformation'
+local Deformation = GarageBridge.loadModule('modules.deformation')
 
 local function destroyPreview()
     if VehicleShow and DoesEntityExist(VehicleShow) then
@@ -53,7 +53,7 @@ local function spawnvehicle(data)
     -- If the vehicle is already physically spawned/stored as persistent or in bucket, retrieve it!
     local persistentVeh = exports['forge-garage']:getPersistentVehicleEntity(data.plate)
     if persistentVeh and DoesEntityExist(persistentVeh) then
-        local callbackData = lib.callback.await('forge_garage:cb_server:pullVehicleFromBucket', false, data.plate, data.coords or GetEntityCoords(cache.ped), data.garage)
+        local callbackData = GarageBridge.callback.await('forge_garage:cb_server:pullVehicleFromBucket', false, data.plate, data.coords or GetEntityCoords(GarageBridge.cache.ped), data.garage)
         
         if callbackData and callbackData.success then
             local netId = callbackData.netId
@@ -92,7 +92,7 @@ local function spawnvehicle(data)
                 state:set('garageName', data.garage, true)
                 
                 if Config.SpawnInVehicle then
-                    TaskWarpPedIntoVehicle(cache.ped, vehEntity, -1)
+                    TaskWarpPedIntoVehicle(GarageBridge.cache.ped, vehEntity, -1)
                 end
                 
                 exports['forge-garage']:registerStoredPersistentVehicle(data.plate, netId, vehEntity)
@@ -113,7 +113,7 @@ local function spawnvehicle(data)
         }
         
         if data.plate then
-            local callbackData = lib.callback.await('forge_garage:cb_server:getvehiclePropByPlate', false, data.plate)
+            local callbackData = GarageBridge.callback.await('forge_garage:cb_server:getvehiclePropByPlate', false, data.plate)
             if not callbackData then
                 error('Failed to load vehicle data with number plate ' .. data.plate)
             end
@@ -194,7 +194,7 @@ local function spawnvehicle(data)
         })
 
         if Config.SpawnInVehicle then
-            TaskWarpPedIntoVehicle(cache.ped, vehEntity, -1)
+            TaskWarpPedIntoVehicle(GarageBridge.cache.ped, vehEntity, -1)
         end
 
 
@@ -208,7 +208,7 @@ local function spawnvehicle(data)
             TriggerEvent("vehiclekeys:client:SetOwner", plate)
         end
 
-        lib.progressCircle({
+        GarageBridge.progressCircle({
             duration = 3000,
             position = 'bottom',
             label = 'Estacionando veículo...',
@@ -260,43 +260,43 @@ local function actionMenu(data)
                 metadata = getVehMetadata(data),
             },
             {
-                title = data.impound and locale('garage.pay_impound') or locale('garage.take_out_veh'),
+                title = data.impound and GarageBridge.locale('garage.pay_impound') or GarageBridge.locale('garage.take_out_veh'),
                 icon = data.impound and 'hand-holding-dollar' or 'sign-out-alt',
                 iconAnimation = Config.IconAnimation,
                 onSelect = function()
                     if data.impound then
                         utils.createMenu({
                             id = 'pay_methode',
-                            title = locale('context.insurance.pay_methode_header'):upper(),
+                            title = GarageBridge.locale('context.insurance.pay_methode_header'):upper(),
                             onExit = destroyPreview,
                             menu = 'garage_action',
                             options = {
                                 {
-                                    title = locale('context.insurance.pay_methode_cash_title'):upper(),
+                                    title = GarageBridge.locale('context.insurance.pay_methode_cash_title'):upper(),
                                     icon = 'dollar-sign',
-                                    description = locale('context.insurance.pay_methode_cash_desc'),
+                                    description = GarageBridge.locale('context.insurance.pay_methode_cash_desc'),
                                     iconAnimation = Config.IconAnimation,
                                     onSelect = function()
                                         destroyPreview()
-                                        if pr_lib.framework.GetMoney('cash') < data.depotprice then return utils.notify(locale('notify.error.not_enough_cash'), 'error') end
-                                        local success = lib.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', data.depotprice)
+                                        if pr_lib.framework.GetMoney('cash') < data.depotprice then return utils.notify(GarageBridge.locale('notify.error.not_enough_cash'), 'error') end
+                                        local success = GarageBridge.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', data.depotprice)
                                         if success then
-                                            utils.notify(locale('garage.success_pay_impound'), 'success')
+                                            utils.notify(GarageBridge.locale('garage.success_pay_impound'), 'success')
                                             return spawnvehicle(data)
                                         end
                                     end
                                 },
                                 {
-                                    title = locale('context.insurance.pay_methode_bank_title'):upper(),
+                                    title = GarageBridge.locale('context.insurance.pay_methode_bank_title'):upper(),
                                     icon = 'fab fa-cc-mastercard',
-                                    description = locale('context.insurance.pay_methode_bank_desc'),
+                                    description = GarageBridge.locale('context.insurance.pay_methode_bank_desc'),
                                     iconAnimation = Config.IconAnimation,
                                     onSelect = function()
                                         destroyPreview()
-                                        if pr_lib.framework.GetMoney('bank') < data.depotprice then return utils.notify(locale('notify.error.not_enough_bank'), 'error') end
-                                        local success = lib.callback.await('forge_garage:cb_server:removeMoney', false, 'bank', data.depotprice)
+                                        if pr_lib.framework.GetMoney('bank') < data.depotprice then return utils.notify(GarageBridge.locale('notify.error.not_enough_bank'), 'error') end
+                                        local success = GarageBridge.callback.await('forge_garage:cb_server:removeMoney', false, 'bank', data.depotprice)
                                         if success then
-                                            utils.notify(locale('garage.success_pay_impound'), 'success')
+                                            utils.notify(GarageBridge.locale('garage.success_pay_impound'), 'success')
                                             return spawnvehicle(data)
                                         end
                                     end
@@ -322,11 +322,11 @@ local function actionMenu(data)
         
         if Config.SwapGarage.enable and swapEnabled(data.garage) then
             actionData.options[#actionData.options + 1] = {
-                title = locale('context.garage.swapgarage'),
+                title = GarageBridge.locale('context.garage.swapgarage'),
                 icon = "retweet",
                 iconAnimation = Config.IconAnimation,
                 metadata = {
-                    ["Preço"] = 'R$ ' .. lib.math.groupdigits(Config.SwapGarage.price, '.')
+                    ["Preço"] = 'R$ ' .. GarageBridge.math.groupdigits(Config.SwapGarage.price, '.')
                 },
                 onSelect = function()
                     destroyPreview()
@@ -341,8 +341,8 @@ local function actionMenu(data)
                         return result
                     end
                     
-                    local garageInput = lib.inputDialog(data.garage:upper(), {
-                        {type = 'select', label = locale('input.garage.swapgarage'), options = garageTable(), required = true},
+                    local garageInput = pr_lib.inputDialog(data.garage:upper(), {
+                        {type = 'select', label = GarageBridge.locale('input.garage.swapgarage'), options = garageTable(), required = true},
                     })
                     
                     if garageInput then
@@ -351,16 +351,16 @@ local function actionMenu(data)
                             newgarage = garageInput[1]
                         }
                         
-                        if pr_lib.framework.GetMoney('cash') < Config.SwapGarage.price then return utils.notify(locale("notify.error.need_money", lib.math.groupdigits(Config.SwapGarage.price, '.')), 'error') end
-                        local success = lib.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', Config.SwapGarage.price)
+                        if pr_lib.framework.GetMoney('cash') < Config.SwapGarage.price then return utils.notify(GarageBridge.locale("notify.error.need_money", GarageBridge.math.groupdigits(Config.SwapGarage.price, '.')), 'error') end
+                        local success = GarageBridge.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', Config.SwapGarage.price)
                         if not success then return end
                         
-                        lib.callback('forge_garage:cb_server:swapGarage', false, function(success)
+                        GarageBridge.callback('forge_garage:cb_server:swapGarage', false, function(success)
                             if not success then return
-                                utils.notify(locale("notify.error.swapgarage"), "error")
+                                utils.notify(GarageBridge.locale("notify.error.swapgarage"), "error")
                             end
                             
-                            utils.notify(locale('notify.success.swapgarage', vehdata.newgarage), "success")
+                            utils.notify(GarageBridge.locale('notify.success.swapgarage', vehdata.newgarage), "success")
                         end, vehdata)
                     end
                 end
@@ -368,23 +368,23 @@ local function actionMenu(data)
         end
         
         actionData.options[#actionData.options + 1] = {
-            title = locale('context.garage.change_veh_name'),
+            title = GarageBridge.locale('context.garage.change_veh_name'),
             icon = 'pencil',
             iconAnimation = Config.IconAnimation,
             metadata = {
-                ["Preço"] = 'R$ ' .. lib.math.groupdigits(Config.SwapGarage.price, '.')
+                ["Preço"] = 'R$ ' .. GarageBridge.math.groupdigits(Config.SwapGarage.price, '.')
             },
             onSelect = function()
                 destroyPreview()
                 
-                local input = lib.inputDialog(data.vehName, {
-                    {type = 'input', label = '', placeholder = locale('input.garage.change_veh_name'), required = true, max = 20},
+                local input = pr_lib.inputDialog(data.vehName, {
+                    {type = 'input', label = '', placeholder = GarageBridge.locale('input.garage.change_veh_name'), required = true, max = 20},
                 })
                 
                 if input then
-                    if pr_lib.framework.GetMoney('cash') < Config.changeNamePrice then return utils.notify(locale('notify.error.not_enough_cash'), 'error') end
+                    if pr_lib.framework.GetMoney('cash') < Config.changeNamePrice then return utils.notify(GarageBridge.locale('notify.error.not_enough_cash'), 'error') end
                     
-                    local success = lib.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', Config.changeNamePrice)
+                    local success = GarageBridge.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', Config.changeNamePrice)
                     if success then
                         CNV[data.plate] = {
                             name = input[1]
@@ -415,7 +415,7 @@ local function getAvailableSP(points, ignoreDist, defaultCoords)
     )
     for k, v in pairs(points) do
         local sp = vec(v.x, v.y, v.z, v.w)
-        local vehEntity = lib.getClosestVehicle(sp.xyz, 2.0, true)
+        local vehEntity = GarageBridge.getClosestVehicle(sp.xyz, 2.0, true)
         
         if ignoreDist and not vehEntity then
             return sp
@@ -440,18 +440,18 @@ local function listAddedVehicles(data, menuData)
             icon = 'car',
             iconColor = 'white',
             onSelect = function()
-                local defaultcoords = vec(GetOffsetFromEntityInWorldCoords(cache.ped, 0.0, 2.0, 0.5), GetEntityHeading(cache.ped) + 90)
+                local defaultcoords = vec(GetOffsetFromEntityInWorldCoords(GarageBridge.cache.ped, 0.0, 2.0, 0.5), GetEntityHeading(GarageBridge.cache.ped) + 90)
                 
                 if data.spawnpoint then
                     defaultcoords = getAvailableSP(data.spawnpoint, data.ignoreDist, defaultcoords)
                 end
                 
                 if not defaultcoords then
-                    return utils.notify(locale('notify.error.no_parking_spot'), 'error', 8000)
+                    return utils.notify(GarageBridge.locale('notify.error.no_parking_spot'), 'error', 8000)
                 end
                 
-                local vehInArea = lib.getClosestVehicle(defaultcoords.xyz)
-                if DoesEntityExist(vehInArea) then return utils.notify(locale('notify.error.no_parking_spot'), 'error') end
+                local vehInArea = GarageBridge.getClosestVehicle(defaultcoords.xyz)
+                if DoesEntityExist(vehInArea) then return utils.notify(GarageBridge.locale('notify.error.no_parking_spot'), 'error') end
                 
                 VehicleShow = utils.createPreviewVeh(vehModel, defaultcoords)
                 FreezeEntityPosition(VehicleShow, true)
@@ -503,7 +503,7 @@ local function openMenu(data)
         end
     end
     
-    local vehData = lib.callback.await('forge_garage:cb_server:getVehicleList', false, data.garage, data.impound, data.shared)
+    local vehData = GarageBridge.callback.await('forge_garage:cb_server:getVehicleList', false, data.garage, data.impound, data.shared)
     
     if not vehData or #vehData == 0 then
         utils.notify("Você não possui chaves de nenhum veículo para esta garagem no seu inventário ou bolsa!", "error", 8000)
@@ -537,30 +537,30 @@ local function openMenu(data)
         local vehicleClass = GetVehicleClassFromName(vehModel)
         local vehicleType = utils.getCategoryByClass(vehicleClass)
         
-        if lib.table.contains(data.type, vehicleType) then
+        if GarageBridge.table.contains(data.type, vehicleType) then
             local icon = Config.Icons[vehicleClass] or 'car'
             local ImpoundPrice = dp > 0 and dp or Config.ImpoundPrice[vehicleClass]
             local impound
             if gState == 0 then
                 if (Config.VehiclesInAllGarages and vehFunc.govbp(plate)) or (not Config.VehiclesInAllGarages and vehFunc.tvbp(plate, data.garage)) then
                     disabled = not Config.LocateVehicleOutGarage
-                    description = 'STATUS: ' .. locale('status.out')
+                    description = 'STATUS: ' .. GarageBridge.locale('status.out')
                 elseif Config.VehiclesInAllGarages and vehFunc.tvbp(plate, nil) then
                     disabled = not Config.LocateVehicleOutGarage
-                    description = 'STATUS: ' .. locale('status.out')
+                    description = 'STATUS: ' .. GarageBridge.locale('status.out')
                 else
                     if Config.VehiclesInAllGarages then
                         impound = true
                     end
-                    description = locale('garage.impound_price', ImpoundPrice)
+                    description = GarageBridge.locale('garage.impound_price', ImpoundPrice)
                 end
             end
             
             if gState == 1 then
                 impound = false
-                description = 'STATUS: ' .. locale('status.in')
+                description = 'STATUS: ' .. GarageBridge.locale('status.in')
                 if shared_garage then
-                    description = locale('context.garage.owner_label', pName) .. ' \n' .. 'STATUS: ' .. locale('status.in')
+                    description = GarageBridge.locale('context.garage.owner_label', pName) .. ' \n' .. 'STATUS: ' .. GarageBridge.locale('status.in')
                 end
             end
             
@@ -575,12 +575,12 @@ local function openMenu(data)
                 onSelect = function()
                     if gState == 0 and vehFunc.tvbp(plate, nil) and not disabled then
                         if vehFunc.tvbp(plate, nil, true) then
-                            return utils.notify(locale('notify.success.locate_vehicle'), 'success', 8000)
+                            return utils.notify(GarageBridge.locale('notify.success.locate_vehicle'), 'success', 8000)
                         end
                     end
 
-                    local pedHeading = GetEntityHeading(cache.ped)
-                    local worlcoords = GetOffsetFromEntityInWorldCoords(cache.ped, 0.0, 2.0, 0.5)
+                    local pedHeading = GetEntityHeading(GarageBridge.cache.ped)
+                    local worlcoords = GetOffsetFromEntityInWorldCoords(GarageBridge.cache.ped, 0.0, 2.0, 0.5)
                     local defaultcoords = vec(worlcoords, pedHeading + 90)
                     
                     if data.spawnpoint then
@@ -588,11 +588,11 @@ local function openMenu(data)
                     end
                     
                     if not defaultcoords then
-                        return utils.notify(locale('notify.error.no_parking_spot'), 'error', 8000)
+                        return utils.notify(GarageBridge.locale('notify.error.no_parking_spot'), 'error', 8000)
                     end
                     
-                    local vehInArea = lib.getClosestVehicle(defaultcoords.xyz)
-                    if DoesEntityExist(vehInArea) then return utils.notify(locale('notify.error.no_parking_spot'), 'error') end
+                    local vehInArea = GarageBridge.getClosestVehicle(defaultcoords.xyz)
+                    if DoesEntityExist(vehInArea) then return utils.notify(GarageBridge.locale('notify.error.no_parking_spot'), 'error') end
                     
                     VehicleShow = utils.createPreviewVeh(vehModel, defaultcoords)
                     FreezeEntityPosition(VehicleShow, true)
@@ -653,18 +653,18 @@ end
 --- Store Vehicle To Garage
 ---@param data GarageVehicleData
 local function storeVeh(data)
-    local myCoords = GetEntityCoords(cache.ped)
-    local vehicle = cache.vehicle or lib.getClosestVehicle(myCoords)
+    local myCoords = GetEntityCoords(GarageBridge.cache.ped)
+    local vehicle = GarageBridge.cache.vehicle or GarageBridge.getClosestVehicle(myCoords)
     
     local vehicleClass = GetVehicleClass(vehicle)
     local vehicleType = utils.getCategoryByClass(vehicleClass)
     
     if not vehicle then return
-        utils.notify(locale('notify.error.not_veh_exist'), 'error')
+        utils.notify(GarageBridge.locale('notify.error.not_veh_exist'), 'error')
     end
     
-    if not lib.table.contains(data.type, vehicleType) then return
-        utils.notify(locale('notify.info.invalid_veh_classs', data.garage))
+    if not GarageBridge.table.contains(data.type, vehicleType) then return
+        utils.notify(GarageBridge.locale('notify.info.invalid_veh_classs', data.garage))
     end
 
     if data.impound then return
@@ -680,7 +680,7 @@ local function storeVeh(data)
     local body = GetVehicleBodyHealth(vehicle)
     local model = prop.model
     
-    local isOwned = lib.callback.await('forge_garage:cb_server:getvehowner', false, plate, shared, {
+    local isOwned = GarageBridge.callback.await('forge_garage:cb_server:getvehowner', false, plate, shared, {
         mods = prop,
         deformation = deformation,
         fuel = fuel,
@@ -690,17 +690,17 @@ local function storeVeh(data)
     })
 
     if not isOwned and not data.vehicles then return
-        utils.notify(locale('notify.error.not_owned'), 'error')
+        utils.notify(GarageBridge.locale('notify.error.not_owned'), 'error')
     end
     if isOwned and data.vehicles then return
-        utils.notify(locale('notify.error.is_service_garage'), 'error')
+        utils.notify(GarageBridge.locale('notify.error.is_service_garage'), 'error')
     end
 
     returnPrCarKeyFromIgnition(vehicle, plate)
     SetVehicleEngineOn(vehicle, false, true, true)
 
-    if cache.vehicle and cache.seat == -1 then
-        TaskLeaveAnyVehicle(cache.ped, true, 0)
+    if GarageBridge.cache.vehicle and GarageBridge.cache.seat == -1 then
+        TaskLeaveAnyVehicle(GarageBridge.cache.ped, true, 0)
         Wait(1000)
     end
     
@@ -764,7 +764,7 @@ local function storeVeh(data)
             })
         end
 
-        utils.notify(locale('notify.success.store_veh'), 'success')
+        utils.notify(GarageBridge.locale('notify.success.store_veh'), 'success')
     end
 end
 

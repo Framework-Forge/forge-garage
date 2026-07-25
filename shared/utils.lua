@@ -34,7 +34,7 @@ function utils.raycastCam(distance)
 end
 
 function utils.notify(msg, type, duration)
-    lib.notify({
+    GarageBridge.notify({
         description = msg,
         type = type,
         duration = duration or 5000
@@ -43,7 +43,7 @@ end
 
 function utils.drawtext (type, text, icon)
     if type == 'show' then
-        lib.showTextUI(text,{
+        GarageBridge.showTextUI(text,{
             position = "right-center",
             icon = icon or '',
             style = {
@@ -51,13 +51,13 @@ function utils.drawtext (type, text, icon)
             }
         })
     elseif type == 'hide' then
-        lib.hideTextUI()
+        GarageBridge.hideTextUI()
     end
 end
 
 function utils.createMenu( data )
-    lib.registerContext(data)
-    lib.showContext(data.id)
+    pr_lib.registerContext(data)
+    pr_lib.showContext(data.id)
 end
 
 utils.previewCam = nil
@@ -132,7 +132,7 @@ function utils.createTargetPed(model, coords, options)
     local newoptions = {}
     local qbtd = nil --- qb-target distance options
     
-    lib.requestModel(model, 150000)
+    GarageBridge.requestModel(model, 150000)
     local ped = CreatePed(0, model, coords.x, coords.y, coords.z - 1, coords.w, false, false)
     SetEntityInvincible(ped, true)
     SetBlockingOfNonTemporaryEvents(ped, true)
@@ -232,10 +232,10 @@ end
 
 function utils.createPlyVeh ( model, coords, cb, network, props )
     network = network == nil and false or network
-    lib.requestModel(model, 150000)
-    local netid = lib.callback.await("forge_garage:server:spawnVehicle", false, model, coords, props)
+    GarageBridge.requestModel(model, 150000)
+    local netid = GarageBridge.callback.await("forge_garage:server:spawnVehicle", false, model, coords, props)
     if not netid then 
-        return lib.notify({description = "Você deve esperar um pouco para fazer essa ação novamente", type = "error", duration = 10000})    
+        return GarageBridge.notify({description = "Você deve esperar um pouco para fazer essa ação novamente", type = "error", duration = 10000})    
     end
     local veh = NetworkGetEntityFromNetworkId(netid)
     local timeout = 0
@@ -255,7 +255,7 @@ end
 
 function utils.createPreviewVeh ( model, coords, cb, network )
     network = network == nil and true or network
-    lib.requestModel(model, 150000)
+    GarageBridge.requestModel(model, 150000)
     local veh = CreateVehicle(model, coords.x, coords.y, coords.z, coords.w, network, false)
     if network then
         local id = NetworkGetNetworkIdFromEntity(veh)
@@ -340,7 +340,7 @@ end
 
 if server then
     function utils.notify(src, msg, type, duration)
-        lib.notify(src, {
+        GarageBridge.notify(src, {
             description = msg,
             type = type,
             duration = duration or 5000

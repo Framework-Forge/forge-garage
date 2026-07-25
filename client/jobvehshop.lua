@@ -13,7 +13,7 @@ local function getRankVehicles(vehicle)
     for model, data in pairs(list) do
         if data.forRank[myRank] and IsModelValid(model) then
             results[index] = {model = model, label = data.label, price = data.price, prefixPlate = data.prefixPlate}
-            index += 1
+            index = index + 1
         end
     end
 
@@ -34,11 +34,11 @@ local function previwVehicle(veh, coords, label)
     local vehLabel = veh.label
     local prefixPlate = veh.prefixPlate
     
-    lib.requestModel(model, 150000)
+    GarageBridge.requestModel(model, 150000)
     vehPreview = utils.createPreviewVeh(model, coords, nil, false)
     utils.createPreviewCam(vehPreview)
 
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:jobvehshopAction',
         title = label,
         onBack = destroyPreviewVehicle,
@@ -47,14 +47,14 @@ local function previwVehicle(veh, coords, label)
         options = {
             {
                 title = vehLabel,
-                description = locale('context.vehicleshop.menu_description_buy'),
+                description = GarageBridge.locale('context.vehicleshop.menu_description_buy'),
                 onSelect = function(args)
                     destroyPreviewVehicle()
                     Wait(100)
                     local newVeh = utils.createPlyVeh(model, coords)
-                    TaskWarpPedIntoVehicle(cache.ped, newVeh, -1)
+                    TaskWarpPedIntoVehicle(GarageBridge.cache.ped, newVeh, -1)
                     SetVehicleFixed(newVeh)
-                    SetVehicleNumberPlateText(newVeh, prefixPlate .. ' ' .. lib.string.random('1111'))
+                    SetVehicleNumberPlateText(newVeh, prefixPlate .. ' ' .. GarageBridge.string.random('1111'))
                     utils.setFuel(newVeh, 100)
 
                     local data = {
@@ -69,18 +69,18 @@ local function previwVehicle(veh, coords, label)
                     TriggerServerEvent('forge_garage:server:buyVehicle', data)
                 end,
                 metadata = {
-                    Price = '$' .. lib.math.groupdigits(price, '.')
+                    Price = '$' .. GarageBridge.math.groupdigits(price, '.')
                 }
             },
         },
     })
-    lib.showContext('forge_garage:jobvehshopAction')
+    pr_lib.showContext('forge_garage:jobvehshopAction')
 end
 
 local function showMenu(data)
     local filteredVehicles = getRankVehicles(data.vehicle)
     if not filteredVehicles[1] then return
-        utils.notify(locale('notify.error.vehicleshop.no_vehicle_available'), 'error', 8000)
+        utils.notify(GarageBridge.locale('notify.error.vehicleshop.no_vehicle_available'), 'error', 8000)
     end
 
     local context = {
@@ -95,15 +95,15 @@ local function showMenu(data)
         context.options[#context.options+1] = {
             title = veh.label,
             icon = Config.Icons[class] or 'car',
-            description = locale('context.vehicleshop.menu_description_preview'),
+            description = GarageBridge.locale('context.vehicleshop.menu_description_preview'),
             onSelect = function ()
                 return previwVehicle(veh, data.spawn, data.label)
             end
         }
     end
 
-    lib.registerContext(context)
-    lib.showContext('forge_garage:jobvehshopMenu')
+    pr_lib.registerContext(context)
+    pr_lib.showContext('forge_garage:jobvehshopMenu')
 end
 
 CreateThread(function ()

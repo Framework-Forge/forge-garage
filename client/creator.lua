@@ -1,15 +1,29 @@
-local zones = require 'modules.zone'
-local spawnPoint = require 'modules.spawnpoint'
-local pedcreator = require 'modules.pedcreator'
+local spawnPoint = GarageBridge.loadModule('modules.spawnpoint')
+local pedcreator = GarageBridge.loadModule('modules.pedcreator')
 
 local listGarage
+
+local function buildGarageZone(points)
+    if type(points) ~= 'table' or #points < 3 then return end
+
+    local zonePoints = {}
+    for index = 1, #points do
+        local point = points[index]
+        zonePoints[index] = vec3(point.x, point.y, point.z)
+    end
+
+    return {
+        points = zonePoints,
+        thickness = 4.0,
+    }
+end
 
 local function returnToContext(contextId)
     if not contextId then return end
 
     CreateThread(function()
         Wait(0)
-        lib.showContext(contextId)
+        pr_lib.showContext(contextId)
     end)
 end
 
@@ -23,10 +37,10 @@ local function blipInput(impound, gLabel)
         local br = {}
         
         ::tryAgain::
-        local blipinput = lib.inputDialog('BLIP', {
-            { type = 'number', label = locale("input.admin.creator_bliptype"), required = true, default = impound and 68 or 357},
-            { type = 'number', label = locale("input.admin.creator_blipcolor"), required = true, default = 3},
-            { type = 'input', label = locale("input.admin.creator_bliplabel"), required = true, default = gLabel },
+        local blipinput = pr_lib.inputDialog('BLIP', {
+            { type = 'number', label = GarageBridge.locale("input.admin.creator_bliptype"), required = true, default = impound and 68 or 357},
+            { type = 'number', label = GarageBridge.locale("input.admin.creator_blipcolor"), required = true, default = 3},
+            { type = 'input', label = GarageBridge.locale("input.admin.creator_bliplabel"), required = true, default = gLabel },
         })
 
         local hi = blipinput
@@ -48,12 +62,20 @@ end
 
 --- Create garage input
 local function createGarage ()
-    zones.startCreator({
-        type = "poly",
-        onCreated = function (zones) ---@param zones OxZone
-            local input = lib.inputDialog('RHD GARAGE (Creator)', {
-                { type = 'input', label = locale("input.admin.creator_labelgarage"), placeholder = 'Alta Garage', required = true },
-                { type = 'multi-select', label = locale("input.admin.creator_typevehicle"), options = {
+    local started = pr_lib.devtools.drawPolyzone3D({
+        minPoints = 3,
+        wallHeight = 4.0,
+        freezePlayer = true,
+    }, function(points)
+        local zones = buildGarageZone(points)
+        if not zones then
+            listGarage()
+            return
+        end
+
+            local input = pr_lib.inputDialog('RHD GARAGE (Creator)', {
+                { type = 'input', label = GarageBridge.locale("input.admin.creator_labelgarage"), placeholder = 'Alta Garage', required = true },
+                { type = 'multi-select', label = GarageBridge.locale("input.admin.creator_typevehicle"), options = {
                     {value = "car", label = "Carros"},
                     {value = "boat", label = "Barcos"},
                     {value = "helicopter", label = "Helicóptero"},
@@ -101,10 +123,13 @@ local function createGarage ()
                 }
                 
                 gzf.save(GarageZone)
-                utils.notify(locale("notify.admin.success_create", label:upper()), "success")
+                utils.notify(GarageBridge.locale("notify.admin.success_create", label:upper()), "success")
             end
-        end
-    })
+        end)
+
+    if not started then
+        listGarage()
+    end
 end
 
 local function notifyPersistentOpeningIgnored()
@@ -294,15 +319,15 @@ local function getGarageIplByIndex(index)
 end
 
 local function currentSafetyEntry()
-    local entity = cache.vehicle and cache.vehicle ~= 0 and cache.vehicle or cache.ped
+    local entity = GarageBridge.cache.vehicle and GarageBridge.cache.vehicle ~= 0 and GarageBridge.cache.vehicle or GarageBridge.cache.ped
     local coords = GetEntityCoords(entity)
     return vec4(coords.x, coords.y, coords.z, GetEntityHeading(entity))
 end
 
 local function createGarageIpl()
-    local input = lib.inputDialog('RHD GARAGE (Creator)', {
-        { type = 'input', label = locale("input.admin.creator_labelgarage"), placeholder = 'Alta Garage', required = true },
-        { type = 'multi-select', label = locale("input.admin.creator_typevehicle"), options = {
+    local input = pr_lib.inputDialog('RHD GARAGE (Creator)', {
+        { type = 'input', label = GarageBridge.locale("input.admin.creator_labelgarage"), placeholder = 'Alta Garage', required = true },
+        { type = 'multi-select', label = GarageBridge.locale("input.admin.creator_typevehicle"), options = {
             {value = "car", label = "Carros"},
             {value = "boat", label = "Barcos"},
             {value = "helicopter", label = "Helicoptero"},
@@ -368,15 +393,23 @@ local function createGarageIpl()
         }
 
         gzf.save(GarageZone)
-        utils.notify(locale("notify.admin.success_create", label:upper()), "success")
+        utils.notify(GarageBridge.locale("notify.admin.success_create", label:upper()), "success")
         utils.notify("Entrada principal de seguranca criada na sua posicao atual.", "inform", 8000)
         listGarage()
         return
     end
 
-    zones.startCreator({
-        type = "poly",
-        onCreated = function (createdZone) ---@param createdZone OxZone
+    local started = pr_lib.devtools.drawPolyzone3D({
+        minPoints = 3,
+        wallHeight = 4.0,
+        freezePlayer = true,
+    }, function(points)
+            local createdZone = buildGarageZone(points)
+            if not createdZone then
+                listGarage()
+                return
+            end
+
             local tPed = not persist and input[9] == 'targetped'
             local sp = input[6] and spawnPoint.create(createdZone, false, nil, gtype) or nil ---@type table<string, vector3[]|string[]>
             local interact = not persist and (tPed and pedcreator.start(createdZone) or input[9]) or nil
@@ -399,18 +432,20 @@ local function createGarageIpl()
             }
 
             gzf.save(GarageZone)
-            utils.notify(locale("notify.admin.success_create", label:upper()), "success")
+            utils.notify(GarageBridge.locale("notify.admin.success_create", label:upper()), "success")
             listGarage()
-        end,
-        onCanceled = listGarage
-    })
+        end)
+
+    if not started then
+        listGarage()
+    end
 end
 
 --- Delete garage by index
 local function delete(self)
     GarageZone[self.label --[[@as string]]] = nil
     gzf.save(GarageZone)
-    utils.notify(locale("notify.admin.success_deleted", self.label --[[@as string]]), "success")
+    utils.notify(GarageBridge.locale("notify.admin.success_deleted", self.label --[[@as string]]), "success")
     listGarage()
 end
 
@@ -419,14 +454,14 @@ local function setBlip(self)
     local k, v = self.k, self.v ---@type string, GarageData
     local blipContext = {
         id = "blip_setting",
-        title = locale("context.admin.blip_setting"),
+        title = GarageBridge.locale("context.admin.blip_setting"),
         menu = self.parentMenu or "rhd:action_garage",
         onBack = function()
 
         end,
         options = {
             {
-                title = locale("context.admin.blip_edit"),
+                title = GarageBridge.locale("context.admin.blip_edit"),
                 icon = "pen-to-square",
                 onSelect = function ()
                     local gBlip = v.blip
@@ -437,10 +472,10 @@ local function setBlip(self)
                         label = gBlip and gBlip.label or k
                     }
 
-                    local blipinput = lib.inputDialog('BLIP', {
-                        { type = 'number', label = locale("input.admin.creator_bliptype"), required = true, default = placeholder.type },
-                        { type = 'number', label = locale("input.admin.creator_blipcolor"), required = true, default = placeholder.color },
-                        { type = 'input', label = locale("input.admin.creator_bliplabel"), required = true, default = placeholder.label },
+                    local blipinput = pr_lib.inputDialog('BLIP', {
+                        { type = 'number', label = GarageBridge.locale("input.admin.creator_bliptype"), required = true, default = placeholder.type },
+                        { type = 'number', label = GarageBridge.locale("input.admin.creator_blipcolor"), required = true, default = placeholder.color },
+                        { type = 'input', label = GarageBridge.locale("input.admin.creator_bliplabel"), required = true, default = placeholder.label },
                     })
 
                     if blipinput then
@@ -450,13 +485,13 @@ local function setBlip(self)
                             label = blipinput[3]
                         }
                         gzf.save(GarageZone)
-                        utils.notify(locale("notify.admin.success_editblip"), "success")
+                        utils.notify(GarageBridge.locale("notify.admin.success_editblip"), "success")
                     end
                     setBlip({ k = k, v = GarageZone[k], parentMenu = self.parentMenu })
                 end
             },
             {
-                title = locale("context.admin.blip_remove"),
+                title = GarageBridge.locale("context.admin.blip_remove"),
                 icon = "trash",
                 onSelect = function()
                     GarageZone[k].blip = nil
@@ -472,18 +507,26 @@ end
 
 --- Change garage locations
 local function changeLocation(self)
-    zones.startCreator({
-        type = "poly",
-        onCreated = function (Zones) ---@param Zones OxZone
+    local started = pr_lib.devtools.drawPolyzone3D({
+        minPoints = 3,
+        wallHeight = 4.0,
+        freezePlayer = true,
+    }, function(points)
+            local Zones = buildGarageZone(points)
+            if not Zones then
+                returnToContext(self.returnMenu)
+                return
+            end
+
             GarageZone[self.label --[[@as string]]].zones = Zones
             gzf.save(GarageZone)
-            utils.notify(locale("notify.admin.success_changelocation"), "success")
+            utils.notify(GarageBridge.locale("notify.admin.success_changelocation"), "success")
             returnToContext(self.returnMenu)
-        end,
-        onCanceled = function()
-            returnToContext(self.returnMenu)
-        end
-    })
+        end)
+
+    if not started then
+        returnToContext(self.returnMenu)
+    end
 end
 
 --- Teleport to garage location
@@ -497,14 +540,14 @@ local function teleportToLocation(self)
 
     DoScreenFadeOut(500)
     Wait(1000)
-    SetPedCoordsKeepVehicle(cache.ped, coords.x, coords.y, coords.z)
+    SetPedCoordsKeepVehicle(GarageBridge.cache.ped, coords.x, coords.y, coords.z)
     DoScreenFadeIn(500)
     returnToContext(self.returnMenu)
 end
 
 local function currentCoords()
-    local coords = GetEntityCoords(cache.ped)
-    local heading = GetEntityHeading(cache.ped)
+    local coords = GetEntityCoords(GarageBridge.cache.ped)
+    local heading = GetEntityHeading(GarageBridge.cache.ped)
     return vec4(coords.x, coords.y, coords.z, heading)
 end
 
@@ -718,7 +761,7 @@ local function setIplEntry(self)
         label = "Adicionar nova entrada"
     }
 
-    local input = lib.inputDialog("Entrada do IPL", {
+    local input = pr_lib.inputDialog("Entrada do IPL", {
         { type = "select", label = "Entrada", options = options, default = 0, required = true },
         { type = "input", label = "Nome da entrada", placeholder = "Ex: Rua / Fundos / Subsolo", required = false },
         { type = "select", label = "Permitir acesso", options = iplAccessOptions(), default = data.entries[1] and data.entries[1].mode or "both", required = true }
@@ -785,7 +828,7 @@ local function setIplFloor(self)
         label = "Adicionar novo andar"
     }
 
-    local selection = lib.inputDialog("Elevador do IPL", {
+    local selection = pr_lib.inputDialog("Elevador do IPL", {
         { type = "select", label = "Ponto do elevador", options = options, default = 0, required = true }
     })
 
@@ -796,7 +839,7 @@ local function setIplFloor(self)
 
     local index = tonumber(selection[1]) or 0
     local current = index > 0 and data.floors[index] or nil
-    local input = lib.inputDialog(index > 0 and "Editar elevador" or "Novo elevador", {
+    local input = pr_lib.inputDialog(index > 0 and "Editar elevador" or "Novo elevador", {
         {
             type = "input",
             label = "Nome do andar",
@@ -936,7 +979,7 @@ local function deleteIplFloor(self)
         return
     end
 
-    local confirmed = lib.alertDialog({
+    local confirmed = pr_lib.alertDialog({
         header = "Apagar Andar",
         content = ("Deseja apagar o andar/elevador interno **%s**?"):format(floor.label or self.index),
         centered = true,
@@ -1237,17 +1280,17 @@ function teleportToIplPoint(self)
 
     TriggerServerEvent("forge_garage:server:setPlayerGarageBucket", self.bucket or 0)
     Wait(150)
-    SetPedCoordsKeepVehicle(cache.ped, coords.x, coords.y, coords.z)
-    SetEntityHeading(cache.ped, coords.w or 0.0)
+    SetPedCoordsKeepVehicle(GarageBridge.cache.ped, coords.x, coords.y, coords.z)
+    SetEntityHeading(GarageBridge.cache.ped, coords.w or 0.0)
 
-    local vehicle = cache.vehicle or GetVehiclePedIsIn(cache.ped, false)
+    local vehicle = GarageBridge.cache.vehicle or GetVehiclePedIsIn(GarageBridge.cache.ped, false)
     if vehicle and vehicle ~= 0 and DoesEntityExist(vehicle) then
         SetEntityHeading(vehicle, coords.w or 0.0)
     end
 
     local deadline = GetGameTimer() + 5000
     RequestCollisionAtCoord(coords.x, coords.y, coords.z)
-    while not HasCollisionLoadedAroundEntity(cache.ped) and GetGameTimer() < deadline do
+    while not HasCollisionLoadedAroundEntity(GarageBridge.cache.ped) and GetGameTimer() < deadline do
         RequestCollisionAtCoord(coords.x, coords.y, coords.z)
         Wait(0)
     end
@@ -1319,8 +1362,8 @@ end
 local function changeGarageLabel(self)
     local k, v = self.k, self.v ---@type string, GarageData
     
-    local inputLabel = lib.inputDialog(locale("input.admin.header_changelabel"), {
-        { type = 'input', label = locale("input.admin.label_changelabel"), placeholder = 'Alta Garage, Pilbox Garage, Etc', required = true, min = 1 },
+    local inputLabel = pr_lib.inputDialog(GarageBridge.locale("input.admin.header_changelabel"), {
+        { type = 'input', label = GarageBridge.locale("input.admin.label_changelabel"), placeholder = 'Alta Garage, Pilbox Garage, Etc', required = true, min = 1 },
     })
 
     if inputLabel then
@@ -1328,7 +1371,7 @@ local function changeGarageLabel(self)
         GarageZone[newLabel] = v
         GarageZone[k] = nil
         gzf.save(GarageZone)
-        utils.notify(locale("notify.admin.success_changelabel", newLabel))
+        utils.notify(GarageBridge.locale("notify.admin.success_changelabel", newLabel))
         listGarage()
     else
         returnToContext(self.returnMenu)
@@ -1368,7 +1411,7 @@ local function setspawnpoint(self)
                     local coords = asp[i]
                     DoScreenFadeOut(500)
                     Wait(1000)
-                    SetPedCoordsKeepVehicle(cache.ped, coords.x, coords.y, coords.z)
+                    SetPedCoordsKeepVehicle(GarageBridge.cache.ped, coords.x, coords.y, coords.z)
                     DoScreenFadeIn(500)
                     setspawnpoint({ k = k, v = GarageZone[k], returnMenu = self.returnMenu })
                 end
@@ -1411,7 +1454,7 @@ local function jobOptions(self)
     if v.job and type(v.job) == "table" then
         for name, grade in pairs(v.job) do
             contextJob.options[#contextJob.options+1] = {
-                title = locale("context.admin.job_description", name, grade),
+                title = GarageBridge.locale("context.admin.job_description", name, grade),
                 icon = "briefcase",
                 onSelect = function()
                     local contextJob2 = {
@@ -1420,7 +1463,7 @@ local function jobOptions(self)
                         menu = "forge_contextJob",
                         options = {
                             {
-                                title = locale("context.admin.delete"),
+                                title = GarageBridge.locale("context.admin.delete"),
                                 icon = "trash",
                                 onSelect = function ()
                                     v.job[name] = nil
@@ -1430,7 +1473,7 @@ local function jobOptions(self)
                                     end
 
                                     GarageZone[k].job = v.job
-                                    utils.notify(locale("notify.admin.success_deleted_access"), "success")
+                                    utils.notify(GarageBridge.locale("notify.admin.success_deleted_access"), "success")
                                     gzf.save( GarageZone )
                                     jobOptions({ k = k, v = GarageZone[k], parentMenu = self.parentMenu })
                                 end
@@ -1444,12 +1487,12 @@ local function jobOptions(self)
     end
 
     contextJob.options[#contextJob.options+1] = {
-        title = locale("context.admin.add_job"),
+        title = GarageBridge.locale("context.admin.add_job"),
         icon = "plus",
         onSelect = function ()
-            local input = lib.inputDialog(locale("input.admin.garage_access"), {
-                { type = 'input', label = locale("input.admin.garage_access_job"), placeholder = 'police, ambulance, etc', required = true },
-                { type = 'number', label = locale("input.admin.garage_access_grade_job"), required = true}
+            local input = pr_lib.inputDialog(GarageBridge.locale("input.admin.garage_access"), {
+                { type = 'input', label = GarageBridge.locale("input.admin.garage_access_job"), placeholder = 'police, ambulance, etc', required = true },
+                { type = 'number', label = GarageBridge.locale("input.admin.garage_access_grade_job"), required = true}
             })
 
             if input then
@@ -1457,7 +1500,7 @@ local function jobOptions(self)
                 if not v.job then v.job = {} end
                 v.job[name] = rank
                 GarageZone[k].job = v.job
-                utils.notify(locale("notify.admin.success_added_access", input[1]))
+                utils.notify(GarageBridge.locale("notify.admin.success_added_access", input[1]))
                 gzf.save( GarageZone )
             end
             jobOptions({ k = k, v = GarageZone[k], parentMenu = self.parentMenu })
@@ -1482,7 +1525,7 @@ local function gangOptions(self)
     if v.gang and type(v.gang) == "table" then
         for name, grade in pairs(v.gang) do
             contextGang.options[#contextGang.options+1] = {
-                title = locale("context.admin.gang_description", name, grade),
+                title = GarageBridge.locale("context.admin.gang_description", name, grade),
                 icon = "users",
                 onSelect = function()
                     local contextGang2 = {
@@ -1491,7 +1534,7 @@ local function gangOptions(self)
                         menu = "forge_contextGang",
                         options = {
                             {
-                                title = locale("context.admin.delete"),
+                                title = GarageBridge.locale("context.admin.delete"),
                                 icon = "trash",
                                 onSelect = function ()
                                     v.gang[name] = nil
@@ -1501,7 +1544,7 @@ local function gangOptions(self)
                                     end
                                     
                                     GarageZone[k].gang = v.gang
-                                    utils.notify(locale("notify.admin.success_deleted_access"), "success")
+                                    utils.notify(GarageBridge.locale("notify.admin.success_deleted_access"), "success")
                                     gzf.save( GarageZone )
                                     gangOptions({ k = k, v = GarageZone[k], parentMenu = self.parentMenu })
                                 end
@@ -1515,19 +1558,19 @@ local function gangOptions(self)
     end
 
     contextGang.options[#contextGang.options+1] = {
-        title = locale("context.admin.add_gang"),
+        title = GarageBridge.locale("context.admin.add_gang"),
         icon = "plus",
         onSelect = function ()
-            local input = lib.inputDialog(locale("input.admin.garage_access"), {
-                { type = 'input', label = locale("input.admin.garage_access_gang"), placeholder = 'ballas, vagos, etc', required = true },
-                { type = 'number', label = locale("input.admin.garage_access_grade_gang"), required = true}
+            local input = pr_lib.inputDialog(GarageBridge.locale("input.admin.garage_access"), {
+                { type = 'input', label = GarageBridge.locale("input.admin.garage_access_gang"), placeholder = 'ballas, vagos, etc', required = true },
+                { type = 'number', label = GarageBridge.locale("input.admin.garage_access_grade_gang"), required = true}
             })
 
             if input then
                 if not v.gang then v.gang = {} end
                 v.gang[input[1]] = tonumber(input[2])
                 GarageZone[k].gang = v.gang
-                utils.notify(locale("notify.admin.success_added_access", input[1]))
+                utils.notify(GarageBridge.locale("notify.admin.success_added_access", input[1]))
                 gzf.save( GarageZone )
             end
             gangOptions({ k = k, v = GarageZone[k], parentMenu = self.parentMenu })
@@ -1571,7 +1614,7 @@ local function setVehicles(garage)
 
     if not value.vehicles then value.vehicles = {} end
 
-    local input = lib.inputDialog("Carros da Garagem", {
+    local input = pr_lib.inputDialog("Carros da Garagem", {
         { type = "multi-select", label = 'Lista', placeholder = 'Selecionar', options = options, default = value.vehicles ,searchable = true, required = false }
     })
 
@@ -1656,7 +1699,7 @@ local function editGarageSettings(args)
                         { value = "cycles", label = "Bicicletas" }
                     }
 
-                    local input = lib.inputDialog("Editar Categorias de Veículos", {
+                    local input = pr_lib.inputDialog("Editar Categorias de Veículos", {
                         { type = "multi-select", label = "Categorias Permitidas", options = typeOptions, default = type(v.type) == "table" and v.type or {v.type}, required = true }
                     })
 
@@ -1688,7 +1731,7 @@ local function editGarageSettings(args)
                         currentMethod = v.interaction or "keypressed"
                     end
 
-                    local input = lib.inputDialog("Método de Abertura", {
+                    local input = pr_lib.inputDialog("Método de Abertura", {
                         { type = "select", label = "Escolha o método", options = {
                             { value = "radial", label = "Usando Radial Menu" },
                             { value = "keypressed", label = "Usando Tecla E" },
@@ -1744,28 +1787,123 @@ local function openGarageLocationMenu(self)
     })
 end
 
+local function teleportToStoredGarageVehicle(self)
+    teleportToIplPoint(self)
+    if self.garage then
+        TriggerServerEvent('forge_garage:server:enterPersistentZone', self.garage)
+    end
+end
+
+local function listStoredGarageVehicles(self)
+    CreateThread(function()
+        local response = GarageBridge.callback.await(
+            'forge_garage:cb_server:getPersistentGarageVehicles',
+            false,
+            self.k
+        )
+
+        if not response or response.allowed ~= true then
+            utils.notify("Acesso administrativo negado.", "error")
+            returnToContext(self.parentMenu)
+            return
+        end
+
+        local contextId = "rhd:stored_vehicles_" .. self.k
+        local vehicles = response.vehicles or {}
+        local options = {}
+        local ipl = self.v and self.v.ipl
+        local isIpl = ipl and ipl.enabled
+
+        if #vehicles == 0 then
+            options[1] = {
+                title = "Nenhum veiculo estacionado",
+                icon = "circle-info",
+                description = "Banco de dados sem veiculos persistentes nesta garagem.",
+                disabled = true,
+            }
+        end
+
+        for i = 1, #vehicles do
+            local vehicle = vehicles[i]
+            local coords = vehicle.coords
+            local teleportCoords = coords and vec4(
+                tonumber(coords.x) or 0.0,
+                tonumber(coords.y) or 0.0,
+                tonumber(coords.z) or 0.0,
+                tonumber(coords.w or coords.h) or 0.0
+            ) or nil
+            local status = vehicle.rendered and "Renderizado"
+                or vehicle.spawned and "Entidade em bucket privado"
+                or "Somente no banco"
+            local runtime = vehicle.spawned
+                and (" | NetID: %s | Bucket: %s/%s"):format(
+                    vehicle.netId or "?",
+                    vehicle.bucket or "?",
+                    vehicle.expectedBucket or "?"
+                )
+                or ""
+
+            options[#options + 1] = {
+                title = vehicle.label or vehicle.vehicle or ("Veiculo " .. i),
+                icon = vehicle.rendered and "car" or vehicle.spawned and "archive" or "database",
+                description = ("Placa: %s | %s%s"):format(vehicle.plate or "?", status, runtime),
+                disabled = teleportCoords == nil,
+                onSelect = teleportToStoredGarageVehicle,
+                args = {
+                    garage = self.k,
+                    coords = teleportCoords,
+                    bucket = isIpl and (ipl.bucket or 0) or 0,
+                    ipl = isIpl and ipl.model or nil,
+                    unloadIpl = not isIpl,
+                    returnMenu = contextId,
+                },
+            }
+        end
+
+        utils.createMenu({
+            id = contextId,
+            title = ("Veiculos Estacionados: %s (%s)"):format(self.k, #vehicles),
+            menu = self.parentMenu,
+            options = options,
+        })
+    end)
+end
+
 local function openGarageVehicleMenu(self)
     local contextId = "rhd:garage_vehicles_" .. self.k
+    local options = {}
+
+    if self.v.persist then
+        options[#options + 1] = {
+            title = "Veiculos Estacionados",
+            icon = "list",
+            description = "Lista banco, estado renderizado e teleporte por veiculo.",
+            onSelect = listStoredGarageVehicles,
+            args = { k = self.k, v = self.v, parentMenu = contextId },
+        }
+    end
+
+    options[#options + 1] = {
+        title = self.isIpl and "Vagas IPL" or "Locais de Spawn",
+        icon = self.isIpl and "square-parking" or "location-dot",
+        description = self.isIpl and "Crie e visualize as vagas internas." or "Configure os pontos de spawn da garagem.",
+        onSelect = self.isIpl and listIplParkingSpots or setspawnpoint,
+        args = { k = self.k, v = self.v, parentMenu = contextId, returnMenu = contextId },
+    }
+
+    options[#options + 1] = {
+        title = "Definir Veiculos",
+        icon = "car",
+        description = "Gerencia os modelos permitidos nesta garagem.",
+        onSelect = setVehicles,
+        args = { index = self.k, value = self.v, returnMenu = contextId },
+    }
+
     utils.createMenu({
         id = contextId,
         title = "Vagas e Veiculos: " .. self.k,
         menu = "rhd:action_garage",
-        options = {
-            {
-                title = self.isIpl and "Vagas IPL" or "Locais de Spawn",
-                icon = self.isIpl and "square-parking" or "location-dot",
-                description = self.isIpl and "Crie e visualize as vagas internas." or "Configure os pontos de spawn da garagem.",
-                onSelect = self.isIpl and listIplParkingSpots or setspawnpoint,
-                args = { k = self.k, v = self.v, parentMenu = contextId, returnMenu = contextId }
-            },
-            {
-                title = "Definir Veiculos",
-                icon = "car",
-                description = "Gerencia os modelos permitidos nesta garagem.",
-                onSelect = setVehicles,
-                args = { index = self.k, value = self.v, returnMenu = contextId }
-            }
-        }
+        options = options,
     })
 end
 
@@ -1777,13 +1915,13 @@ local function openGarageConfigurationMenu(self)
         menu = "rhd:action_garage",
         options = {
             {
-                title = locale("context.admin.blip_setting"),
+                title = GarageBridge.locale("context.admin.blip_setting"),
                 icon = "map",
                 onSelect = setBlip,
                 args = { k = self.k, v = self.v, parentMenu = contextId }
             },
             {
-                title = locale("context.admin.options_changelabel"),
+                title = GarageBridge.locale("context.admin.options_changelabel"),
                 icon = "pen-to-square",
                 onSelect = changeGarageLabel,
                 args = { k = self.k, v = self.v, returnMenu = contextId }
@@ -1805,7 +1943,7 @@ local function openGaragePermissionsMenu(self)
 
     if not self.v.impound and not self.v.gang then
         options[#options + 1] = {
-            title = locale("context.admin.job_title"),
+            title = GarageBridge.locale("context.admin.job_title"),
             icon = "briefcase",
             onSelect = jobOptions,
             args = { k = self.k, v = self.v, parentMenu = contextId }
@@ -1814,7 +1952,7 @@ local function openGaragePermissionsMenu(self)
 
     if not self.v.impound and not self.v.job then
         options[#options + 1] = {
-            title = locale("context.admin.gang_title"),
+            title = GarageBridge.locale("context.admin.gang_title"),
             icon = "users",
             onSelect = gangOptions,
             args = { k = self.k, v = self.v, parentMenu = contextId }
@@ -1849,7 +1987,7 @@ local function openGarageAdminMenu(self)
         menu = "rhd:action_garage",
         options = {
             {
-                title = locale("context.admin.tptoloc"),
+                title = GarageBridge.locale("context.admin.tptoloc"),
                 icon = "location-dot",
                 onSelect = self.isIpl and teleportToIplPoint or teleportToLocation,
                 args = self.isIpl
@@ -1857,7 +1995,7 @@ local function openGarageAdminMenu(self)
                     or { coords = location, returnMenu = contextId }
             },
             {
-                title = locale("context.admin.options_delete"),
+                title = GarageBridge.locale("context.admin.options_delete"),
                 icon = "trash",
                 onSelect = delete,
                 args = { label = self.k, returnMenu = "rhd:list_garage" }
@@ -1916,11 +2054,11 @@ end
 listGarage = function()
     local context = {
         id = 'rhd:list_garage',
-        title = locale("context.admin.listgarage_title"),
+        title = GarageBridge.locale("context.admin.listgarage_title"),
         menu = 'menu_gerencial',
         options = {
             {
-                title = locale('context.admin.addnewgarage'),
+                title = GarageBridge.locale('context.admin.addnewgarage'),
                 icon = 'plus',
                 onSelect = createGarageIpl
             }
@@ -1932,7 +2070,7 @@ listGarage = function()
         context.options[#context.options + 1] = {
             title = k,
             icon = isIpl and "building" or "warehouse",
-            description = locale("context.admin.listgarage_description", v.impound and "Impound" or v.shared and "Shared" or "Public", utils.garageType(v.type)),
+            description = GarageBridge.locale("context.admin.listgarage_description", v.impound and "Impound" or v.shared and "Shared" or "Public", utils.garageType(v.type)),
             onSelect = function ()
                 if openGarageActionsMenu({ k = k, v = v, isIpl = isIpl }) then return end
 
@@ -1945,7 +2083,7 @@ listGarage = function()
                     end,
                     options = {
                         {
-                            title = locale("context.admin.options_delete"),
+                            title = GarageBridge.locale("context.admin.options_delete"),
                             icon = "trash",
                             onSelect = delete,
                             args = {
@@ -1954,7 +2092,7 @@ listGarage = function()
                             }
                         },
                         {
-                            title = locale("context.admin.blip_setting"),
+                            title = GarageBridge.locale("context.admin.blip_setting"),
                             icon = "map",
                             onSelect = setBlip,
                             args = {
@@ -1964,7 +2102,7 @@ listGarage = function()
                             }
                         },
                         {
-                            title = isIpl and "Configurar Entrada/Saida IPL" or locale("context.admin.options_changelocation"),
+                            title = isIpl and "Configurar Entrada/Saida IPL" or GarageBridge.locale("context.admin.options_changelocation"),
                             icon = "location-dot",
                             onSelect = isIpl and iplOptions or changeLocation,
                             args = {
@@ -1975,7 +2113,7 @@ listGarage = function()
                             }
                         },
                         {
-                            title = locale("context.admin.tptoloc"),
+                            title = GarageBridge.locale("context.admin.tptoloc"),
                             icon = "location-dot",
                             onSelect = teleportToLocation,
                             args = {
@@ -1984,7 +2122,7 @@ listGarage = function()
                             }
                         },
                         {
-                            title = locale("context.admin.options_changelabel"),
+                            title = GarageBridge.locale("context.admin.options_changelabel"),
                             icon = "pen-to-square",
                             onSelect = changeGarageLabel,
                             args = {
@@ -2028,7 +2166,7 @@ listGarage = function()
 
                 if not v.impound and not v.gang then
                     context2.options[#context2.options+1] = {
-                        title = locale("context.admin.job_title"),
+                        title = GarageBridge.locale("context.admin.job_title"),
                         icon = "briefcase",
                         onSelect = jobOptions,
                         args = {
@@ -2040,7 +2178,7 @@ listGarage = function()
 
                 if not v.impound and not v.job then
                     context2.options[#context2.options+1] = {
-                        title = locale("context.admin.gang_title"),
+                        title = GarageBridge.locale("context.admin.gang_title"),
                         icon = "users",
                         onSelect = gangOptions,
                         args = {
@@ -2061,7 +2199,7 @@ local playerLoaded = false
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
     playerLoaded = true
     gzf.refresh()
-    lib.print.info("Garage data has been successfully loaded (OnPlayerLoaded)")
+    GarageBridge.print.info("Garage data has been successfully loaded (OnPlayerLoaded)")
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
@@ -2074,7 +2212,7 @@ CreateThread(function ()
     end
     playerLoaded = true
     gzf.refresh()
-    lib.print.info("Garage data has been successfully loaded")
+    GarageBridge.print.info("Garage data has been successfully loaded")
 end)
 
 RegisterNetEvent('forge_garage:client:syncConfig', function(newconfig)

@@ -1,18 +1,18 @@
 Config = {}
 
 -- Load garage and vehicle data from JSON files
-GarageZone = lib.loadJson('data.garages') ---@type table<string, GarageData>
-CNV = lib.loadJson('data.vehiclesname') ---@type table<string, CustomName>
+GarageZone = GarageBridge.loadJson('data.garages') ---@type table<string, GarageData>
+CNV = GarageBridge.loadJson('data.vehiclesname') ---@type table<string, CustomName>
 
 Config.Target = 'ox'           -- ox / qb
-Config.RadialMenu = 'ox'       --- ox / qb / rhd
+Config.RadialMenu = 'native'   --- interação local; não depende de bibliotecas externas
 Config.FuelScript = 'cdn-fuel' --- forge_fuel / ox_fuel / LegacyFuel / ps-fuel / cdn-fuel
 Config.changeNamePrice = 15000 --- price for changing the name of the vehicle in the garage
 Config.SpawnInVehicle = false  --- change this to true if you want the player to immediately enter the vehicle when the vehicle is taken out of the garage
 Config.VehiclesInAllGarages = false --- Opção ZAP: deixe true para todos os veículos do player aparecerem em todas as garagens
 Config.DisableVehicleCamera = false --- Desativa a movimentação de câmera ao puxar o veículo
 Config.LocateVehicleOutGarage = true --- Opção ZAP: encontrar veículos fora da garagem
-Config.PersistentDistance = 300.0 --- Distância para veículo persistente aparecer/sumir no bucket
+Config.PersistentDistance = 120.0 --- Distância para veículo persistente aparecer/sumir no bucket
 
 -- Cada grupo abaixo representa variantes que ocupam o mesmo interior.
 -- Somente um IPL de cada grupo pode permanecer ativo no cliente.
@@ -142,7 +142,7 @@ Config.TransferVehicle = {
 Config.TransferTax = {
     enable = true,
     society = "government",
-    percent = 0.10 -- 10%
+    percent = 0.10 -- 10% descontado percentual para quem compra e quem vende
 }
 
 -- Garage swap settings

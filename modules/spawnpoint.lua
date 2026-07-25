@@ -43,7 +43,7 @@ local curVehicle = nil
 local busy = false
 local glm = require "glm"
 local glm_polygon_contains = glm.polygon.contains
-local debugzone = require 'modules.debugzone'
+local debugzone = GarageBridge.loadModule('modules.debugzone')
 local function deletePV(pos)
 
     if pos and type(pos) == 'number' then
@@ -97,7 +97,7 @@ end
 ---@param coords vector4
 local function createPV(model, coords)
     local vm = model
-    lib.requestModel(vm)
+    GarageBridge.requestModel(vm)
     local pv = CreateVehicle(vm, coords.x, coords.y, coords.z, coords.w, false, false)
     SetVehicleDoorsLocked(pv, 2)
     SetEntityAlpha(pv, 50, true)
@@ -141,7 +141,7 @@ function spawnPoint.create(zone, required, existingPoint, vehicleTypes, ignoreZo
     ]]
 
     utils.drawtext('show', text:format(vehType, vehicle))
-    lib.requestModel(vehicle, 150000)
+    GarageBridge.requestModel(vehicle, 150000)
     curVehicle = createPV(vehicle, vec(1.0, 1.0, 1.0, 0))
 
     local vc = {}
@@ -342,7 +342,7 @@ end
 
 AddEventHandler('onResourceStop', function(resource)
    if resource == GetCurrentResourceName() then
-    lib.hideTextUI()
+    GarageBridge.hideTextUI()
     DeleteVehicle(curVehicle)
     for i=1, #vehCreated do
         local entity = vehCreated[i]

@@ -20,11 +20,11 @@ if qbHousing or psHousing or qsHousing then
                 houseZone[lasthouse]:remove()
             end
             
-            if hasKey and HG.takeVehicle?.x then
+            if hasKey and HG.takeVehicle and HG.takeVehicle.x then
                 local coords = HG.takeVehicle
                 local label = HG.label
                 local spawnloc = vec4(coords.x, coords.y, coords.z, coords.w)
-                houseZone[house] = lib.zones.sphere({
+                houseZone[house] = GarageBridge.zones.sphere({
                     coords = spawnloc.xyz,
                     radius = 4,
                     inside = function ()
@@ -38,7 +38,7 @@ if qbHousing or psHousing or qsHousing then
                                 ignoreDist = true
                             }
         
-                            if cache.vehicle then
+                            if GarageBridge.cache.vehicle then
                                 return exports['forge-garage']:storeVehicle(args)
                             end
         
@@ -46,7 +46,7 @@ if qbHousing or psHousing or qsHousing then
                         end
                     end,
                     onEnter = function ()
-                        isOwner = lib.callback.await('forge_garage:cb_server:getOwnedHouse', false, house)
+                        isOwner = GarageBridge.callback.await('forge_garage:cb_server:getOwnedHouse', false, house)
                         if not isOwner then return end
                         local dl = ('[E] - %s'):format(label)
                         utils.drawtext('show', dl:upper(), 'warehouse')
@@ -77,13 +77,13 @@ if qbHousing or psHousing or qsHousing then
         end
     else
         --- check house owner
-        lib.callback.register('forge_garage:cb_server:getOwnedHouse', function(src, house)
+        GarageBridge.callback.register('forge_garage:cb_server:getOwnedHouse', function(src, house)
             local key = false
             local player = pr_lib.framework.GetPlayer(src)
             if not player then return false end
             
-            local license = player.PlayerData?.license or player.license or ""
-            local cid = player.PlayerData?.citizenid or player.citizenid or ""
+            local license = player.PlayerData and player.PlayerData.license or player.license or ""
+            local cid = player.PlayerData and player.PlayerData.citizenid or player.citizenid or ""
             local houseKey = false
             
             if GetResourceState("qb-houses") ~= "missing" then

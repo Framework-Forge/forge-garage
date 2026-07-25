@@ -6,9 +6,9 @@ description 'Garage system for ESX & QBCore made by RHD Team'
 
 shared_scripts {
     '@pr_bridge/init.lua',
-    '@ox_lib/init.lua',
-    '@qbx_core/modules/lib.lua',
-    'shared/*.lua',
+    'shared/bridge.lua',
+    'shared/config.lua',
+    'shared/utils.lua',
     'shared/houses.lua'
 }
 
@@ -16,7 +16,13 @@ client_scripts {
     'client/radialmenu.lua',
     'client/keymanager.lua',
     'client/persist.lua',
-    'client/*.lua',
+    'client/blip.lua',
+    'client/zone.lua',
+    'client/vehicle.lua',
+    'client/main.lua',
+    'client/jobvehshop.lua',
+    'client/police_impound.lua',
+    'client/creator.lua',
 }
 
 exports {
@@ -41,16 +47,14 @@ files {
     'data/garages.json',
     'data/vehiclesname.json',
     'modules/debugzone.lua',
-    'modules/zone.lua',
     'modules/deformation.lua',
     'modules/spawnpoint.lua',
     'modules/pedcreator.lua',
+    'modules/zone.lua',
 }
 
-ox_lib "locale"
-
 dependencies {
-    'ox_lib'
+    'pr_bridge'
 }
 
 lua54 'yes'

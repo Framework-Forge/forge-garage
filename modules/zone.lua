@@ -31,15 +31,15 @@ end
 
 local function updateText()
 	local text = {
-        locale("createzone.1"),
-        locale("createzone.2", xCoord),
-        locale("createzone.3", yCoord),
-        locale("createzone.4", zCoord),
-        locale("createzone.5", height),
-        locale("createzone.6"),
-        locale("createzone.7"),
-        locale("createzone.8"),
-        locale("createzone.9"),
+        GarageBridge.locale("createzone.1"),
+        GarageBridge.locale("createzone.2", xCoord),
+        GarageBridge.locale("createzone.3", yCoord),
+        GarageBridge.locale("createzone.4", zCoord),
+        GarageBridge.locale("createzone.5", height),
+        GarageBridge.locale("createzone.6"),
+        GarageBridge.locale("createzone.7"),
+        GarageBridge.locale("createzone.8"),
+        GarageBridge.locale("createzone.9"),
 	}
 	utils.drawtext('show',table.concat(text))
 end
@@ -149,7 +149,7 @@ function Zones.startCreator( data )
 
     local lStep = 0.05
     local rStep = 0.05
-	local coords = GetEntityCoords(cache.ped)
+	local coords = GetEntityCoords(GarageBridge.cache.ped)
 
 	xCoord = round(coords.x) + 0.0
 	yCoord = round(coords.y) + 0.0

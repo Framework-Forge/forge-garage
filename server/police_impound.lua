@@ -1,6 +1,6 @@
 if not Config.UsePoliceImpound then return end
 
-lib.callback.register("forge_garage:cb_server:policeImpound.getVehicle", function (_, garage)
+GarageBridge.callback.register("forge_garage:cb_server:policeImpound.getVehicle", function (_, garage)
     local dataToSend = {}
     local result = MySQL.query.await("SELECT * FROM police_impound WHERE garage = ?", {garage})
     if result and next(result) then
@@ -22,14 +22,14 @@ lib.callback.register("forge_garage:cb_server:policeImpound.getVehicle", functio
     return dataToSend
 end)
 
-lib.callback.register("forge_garage:cb_server:policeImpound.impoundveh", function (_, impoundData )
+GarageBridge.callback.register("forge_garage:cb_server:policeImpound.impoundveh", function (_, impoundData )
     local impounded = MySQL.insert.await('INSERT INTO `police_impound` (citizenid, plate, vehicle, props, owner, officer, date, fine, garage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', {
         impoundData.citizenid, impoundData.plate, impoundData.vehicle, json.encode(impoundData.prop), impoundData.owner, impoundData.officer, os.date('%d/%m/%Y', impoundData.date), impoundData.fine, impoundData.garage
     })
     return GarageDB.uvspi(impoundData.plate, 2)
 end)
 
-lib.callback.register("forge_garage:cb_server:policeImpound.cekDate", function (_, date )
+GarageBridge.callback.register("forge_garage:cb_server:policeImpound.cekDate", function (_, date )
     local takeout, day = false, 0
     local d, m, y = date:match("(%d+)/(%d+)/(%d+)")
     local currentDate = os.date("*t")
@@ -49,6 +49,7 @@ RegisterNetEvent('forge_garage:server:policeImpound.sendBill', function( citizen
     if GetInvokingResource() then return end
     local Player = pr_lib.framework.GetPlayerFromIdentifier(citizenid)
     if not Player then return end
-    local paid = lib.callback.await("forge_garage:cb_client:sendFine", Player.PlayerData?.source or Player.source, fine)
+    local playerSource = Player.PlayerData and Player.PlayerData.source or Player.source
+    local paid = GarageBridge.callback.await("forge_garage:cb_client:sendFine", playerSource, fine)
     if paid then MySQL.update("UPDATE police_impound SET paid = 1 WHERE plate = ?", { plate }) end
 end)

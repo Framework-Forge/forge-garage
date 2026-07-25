@@ -298,8 +298,8 @@ local function getPointCoords(point)
 end
 
 local function walkPedForward(distance)
-    local target = GetOffsetFromEntityInWorldCoords(cache.ped, 0.0, distance or 2.0, 0.0)
-    TaskGoStraightToCoord(cache.ped, target.x, target.y, target.z, 1.0, 2000, GetEntityHeading(cache.ped), 0.2)
+    local target = GetOffsetFromEntityInWorldCoords(GarageBridge.cache.ped, 0.0, distance or 2.0, 0.0)
+    TaskGoStraightToCoord(GarageBridge.cache.ped, target.x, target.y, target.z, 1.0, 2000, GetEntityHeading(GarageBridge.cache.ped), 0.2)
 end
 
 local function rollVehicleForward(vehicle, distance)
@@ -321,21 +321,21 @@ local function waitForCollisionAt(coords)
     local deadline = GetGameTimer() + 5000
     RequestCollisionAtCoord(coords.x, coords.y, coords.z)
 
-    while not HasCollisionLoadedAroundEntity(cache.ped) and GetGameTimer() < deadline do
+    while not HasCollisionLoadedAroundEntity(GarageBridge.cache.ped) and GetGameTimer() < deadline do
         RequestCollisionAtCoord(coords.x, coords.y, coords.z)
         Wait(0)
     end
 
-    return HasCollisionLoadedAroundEntity(cache.ped)
+    return HasCollisionLoadedAroundEntity(GarageBridge.cache.ped)
 end
 
 local function teleportPedOrVehicle(coords, moveMode)
     SetFocusPosAndVel(coords.x, coords.y, coords.z, 0.0, 0.0, 0.0)
     NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 50.0, 0)
-    SetPedCoordsKeepVehicle(cache.ped, coords.x, coords.y, coords.z)
-    SetEntityHeading(cache.ped, coords.w or coords.h or 0.0)
+    SetPedCoordsKeepVehicle(GarageBridge.cache.ped, coords.x, coords.y, coords.z)
+    SetEntityHeading(GarageBridge.cache.ped, coords.w or coords.h or 0.0)
 
-    local vehicle = cache.vehicle or GetVehiclePedIsIn(cache.ped, false)
+    local vehicle = GarageBridge.cache.vehicle or GetVehiclePedIsIn(GarageBridge.cache.ped, false)
     if vehicle and vehicle ~= 0 and DoesEntityExist(vehicle) then
         SetEntityHeading(vehicle, coords.w or coords.h or 0.0)
     end
@@ -437,7 +437,7 @@ local function selectIplPoint(title, points)
         }
     end
 
-    local input = lib.inputDialog(title, {
+    local input = pr_lib.inputDialog(title, {
         { type = "select", label = "Destino", options = options, required = true }
     })
 
@@ -472,7 +472,7 @@ local function selectElevatorDestination(title, floors, entries, currentFloorInd
     if #destinations == 0 then return nil end
     if #destinations == 1 then return destinations[1] end
 
-    local input = lib.inputDialog(title, {
+    local input = pr_lib.inputDialog(title, {
         { type = "select", label = "Destino", options = options, required = true }
     })
 
@@ -551,19 +551,19 @@ function gzf.refresh ()
             for entryIndex = 1, #entries do
                 local entry = entries[entryIndex]
                 local entryCoords = entry.coords
-                CreatedZone[k .. ":ipl_entry:" .. entryIndex] = lib.zones.sphere({
+                CreatedZone[k .. ":ipl_entry:" .. entryIndex] = GarageBridge.zones.sphere({
                     coords = vec3(entryCoords.x, entryCoords.y, entryCoords.z),
                     radius = 2.5,
                     inside = function()
                         if not stui then
-                            local dl = cache.vehicle and ('[E/Buzina] - Entrar %s'):format(entry.label or k) or ('[E] - Entrar %s'):format(entry.label or k)
+                            local dl = GarageBridge.cache.vehicle and ('[E/Buzina] - Entrar %s'):format(entry.label or k) or ('[E] - Entrar %s'):format(entry.label or k)
                             utils.drawtext('show', dl, 'warehouse')
                             stui = true
                         end
 
                         if (IsControlJustPressed(0, 38) or IsControlJustPressed(0, 86)) then
                             runZoneInteraction(function()
-                                local inVehicle = cache.vehicle and true or false
+                                local inVehicle = GarageBridge.cache.vehicle and true or false
                                 if not accessModeAllows(entry.mode, inVehicle) then
                                     return utils.notify(("Esta entrada aceita %s."):format(accessModeLabel(entry.mode)), "error")
                                 end
@@ -597,19 +597,19 @@ function gzf.refresh ()
             for floorIndex = 1, #floors do
                 local floor = floors[floorIndex]
                 local floorCoords = floor.coords
-                CreatedZone[k .. ":ipl_exit:" .. floorIndex] = lib.zones.sphere({
+                CreatedZone[k .. ":ipl_exit:" .. floorIndex] = GarageBridge.zones.sphere({
                     coords = vec3(floorCoords.x, floorCoords.y, floorCoords.z),
                     radius = 2.5,
                     inside = function()
                         if not stui then
-                            local dl = cache.vehicle and ('[E/Buzina] - Elevador %s'):format(floor.label) or ('[E] - Elevador %s'):format(floor.label)
+                            local dl = GarageBridge.cache.vehicle and ('[E/Buzina] - Elevador %s'):format(floor.label) or ('[E] - Elevador %s'):format(floor.label)
                             utils.drawtext('show', dl, 'warehouse')
                             stui = true
                         end
 
                         if (IsControlJustPressed(0, 38) or IsControlJustPressed(0, 86)) then
                             runZoneInteraction(function()
-                                local inVehicle = cache.vehicle and true or false
+                                local inVehicle = GarageBridge.cache.vehicle and true or false
                                 if not accessModeAllows(floor.mode, inVehicle) then
                                     return utils.notify(("Este elevador aceita %s."):format(accessModeLabel(floor.mode)), "error")
                                 end
@@ -659,11 +659,11 @@ function gzf.refresh ()
             for spotIndex = 1, #parkingSpots do
                 local spot = parkingSpots[spotIndex]
                 local spotCoords = spot.coords
-                CreatedZone[k .. ":ipl_parking:" .. spotIndex] = lib.zones.sphere({
+                CreatedZone[k .. ":ipl_parking:" .. spotIndex] = GarageBridge.zones.sphere({
                     coords = vec3(spotCoords.x, spotCoords.y, spotCoords.z),
                     radius = spot.radius or 3.0,
                     inside = function()
-                        if cache.vehicle then
+                        if GarageBridge.cache.vehicle then
                             if not stui then
                                 local dl = ('[E/Buzina] - Estacionar %s'):format(spot.label or k)
                                 utils.drawtext('show', dl, 'warehouse')
@@ -715,11 +715,11 @@ function gzf.refresh ()
             
             function zoneOptions:inside()
                 if not stui then
-                    local dl = cache.vehicle and ('[E/Buzina] - %s'):format(k) or k
+                    local dl = GarageBridge.cache.vehicle and ('[E/Buzina] - %s'):format(k) or k
                     utils.drawtext('show', dl, 'warehouse')
                     stui = true
                 end
-                if (IsControlJustPressed(0, 38) or IsControlJustPressed(0, 86)) and cache.vehicle then
+                if (IsControlJustPressed(0, 38) or IsControlJustPressed(0, 86)) and GarageBridge.cache.vehicle then
                     runZoneInteraction(function()
                         if not gzf.authorize(k, v) then return end
                         exports['forge-garage']:storeVehicle(args)
@@ -753,16 +753,28 @@ function gzf.refresh ()
                 utils.removeTargetPed(ped, id)
             end
         elseif v.interaction == "keypressed" then
+            local promptAllowed = false
+            local nextPromptRefresh = 0
+
             function zoneOptions:inside()
+                if promptAllowed then
+                    local now = GetGameTimer()
+                    if now >= nextPromptRefresh then
+                        local dl = GarageBridge.cache.vehicle and ('[E/Buzina] - %s'):format(k) or ('[E] - %s'):format(k)
+                        utils.drawtext('show', dl, 'warehouse')
+                        nextPromptRefresh = now + 1000
+                    end
+                end
+
                 if IsControlJustPressed(0, 38) then
                     runZoneInteraction(function()
                         if not gzf.authorize(k, v) then return end
-                        if cache.vehicle then
+                        if GarageBridge.cache.vehicle then
                             return exports['forge-garage']:storeVehicle(args)
                         end
                         exports['forge-garage']:openMenu(args)
                     end)
-                elseif IsControlJustPressed(0, 86) and cache.vehicle then
+                elseif IsControlJustPressed(0, 86) and GarageBridge.cache.vehicle then
                     runZoneInteraction(function()
                         if not gzf.authorize(k, v) then return end
                         exports['forge-garage']:storeVehicle(args)
@@ -771,12 +783,13 @@ function gzf.refresh ()
             end
 
             function zoneOptions:onEnter()
-                if not gzf.authorize(k, v) then return end
-                local dl = cache.vehicle and ('[E/Buzina] - %s'):format(k) or ('[E] - %s'):format(k)
-                utils.drawtext('show', dl, 'warehouse')
+                promptAllowed = gzf.authorize(k, v)
+                nextPromptRefresh = 0
             end
 
             function zoneOptions:onExit()
+                promptAllowed = false
+                nextPromptRefresh = 0
                 utils.drawtext('hide')
             end
         elseif v.interaction == "radial" then
@@ -786,7 +799,7 @@ function gzf.refresh ()
 
                 radFunc.create({
                     id = "open_garage",
-                    label = v.impound and locale('garage.access_impound') or locale("garage.open"),
+                    label = v.impound and GarageBridge.locale('garage.access_impound') or GarageBridge.locale("garage.open"),
                     icon = "warehouse",
                     event = "forge_garage:radial:open",
                     args = args
@@ -795,7 +808,7 @@ function gzf.refresh ()
                 if not v.impound then
                     radFunc.create({
                         id = "store_veh",
-                        label = locale("garage.store"),
+                        label = GarageBridge.locale("garage.store"),
                         icon = "parking",
                         event = "forge_garage:radial:store",
                         args = args
@@ -810,24 +823,29 @@ function gzf.refresh ()
                 radFunc.remove("store_veh")
             end
         elseif v.persist then
+            local promptVisible = false
+            local nextPromptRefresh = 0
+
             function zoneOptions:inside()
-                if cache.vehicle then
-                    if not stui then
+                if GarageBridge.cache.vehicle then
+                    local now = GetGameTimer()
+                    if not promptVisible or now >= nextPromptRefresh then
                         local dl = ('[E/Buzina] - Estacionar em %s'):format(k)
                         utils.drawtext('show', dl, 'warehouse')
-                        stui = true
+                        promptVisible = true
+                        nextPromptRefresh = now + 1000
                     end
+
                     if (IsControlJustPressed(0, 38) or IsControlJustPressed(0, 86)) then
                         runZoneInteraction(function()
                             if not gzf.authorize(k, v) then return end
                             exports['forge-garage']:storeVehicle(args)
                         end)
                     end
-                else
-                    if stui then
-                        utils.drawtext('hide')
-                        stui = false
-                    end
+                elseif promptVisible then
+                    utils.drawtext('hide')
+                    promptVisible = false
+                    nextPromptRefresh = 0
                 end
             end
 
@@ -836,11 +854,12 @@ function gzf.refresh ()
             end
 
             function zoneOptions:onExit()
-                stui = false
+                promptVisible = false
+                nextPromptRefresh = 0
                 utils.drawtext('hide')
             end
         end
-        CreatedZone[k] = lib.zones.poly(zoneOptions)
+        CreatedZone[k] = GarageBridge.zones.poly(zoneOptions)
         end
         ::continue::
     end
@@ -849,7 +868,7 @@ function gzf.refresh ()
     end)
 end
 
-lib.onCache('vehicle', function(value)
+GarageBridge.onCache('vehicle', function(value)
     stui = false
 end)
 

@@ -1,5 +1,5 @@
 local function showCopyKeysMenu()
-    local keys = lib.callback.await('forge_garage:cb_server:getPlayerKeyItems', false)
+    local keys = GarageBridge.callback.await('forge_garage:cb_server:getPlayerKeyItems', false)
     if not keys or #keys == 0 then
         return utils.notify("Você não possui chaves físicas no seu inventário.", "error")
     end
@@ -12,7 +12,7 @@ local function showCopyKeysMenu()
             description = ("Placa: %s | Serial: %s"):format(key.plate, key.barcode),
             icon = 'key',
             onSelect = function()
-                local confirm = lib.alertDialog({
+                local confirm = pr_lib.alertDialog({
                     header = 'Tirar Cópia da Chave',
                     content = ('Deseja fazer uma cópia da chave do veículo %s por R$%s?'):format(key.plate, Config.GiveKeys.price),
                     centered = true,
@@ -24,7 +24,7 @@ local function showCopyKeysMenu()
                         return utils.notify('Você não possui dinheiro suficiente na carteira.', 'error')
                     end
 
-                    local success, reason = lib.callback.await('forge_garage:cb_server:copyInventoryKey', false, key.barcode)
+                    local success, reason = GarageBridge.callback.await('forge_garage:cb_server:copyInventoryKey', false, key.barcode)
                     if success then
                         utils.notify('Cópia da chave criada com sucesso!', 'success')
                     else
@@ -35,17 +35,17 @@ local function showCopyKeysMenu()
         }
     end
 
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:key_manager_copy_list',
         title = 'Tirar Cópia de Chave',
         menu = 'forge_garage:key_manager_main',
         options = options
     })
-    lib.showContext('forge_garage:key_manager_copy_list')
+    pr_lib.showContext('forge_garage:key_manager_copy_list')
 end
 
 local function showLostKeysMenu()
-    local vehicles = lib.callback.await('forge_garage:cb_server:getOwnedVehiclesForKeys', false)
+    local vehicles = GarageBridge.callback.await('forge_garage:cb_server:getOwnedVehiclesForKeys', false)
     if not vehicles or #vehicles == 0 then
         return utils.notify("Você não possui nenhum veículo registrado em seu nome.", "error")
     end
@@ -58,7 +58,7 @@ local function showLostKeysMenu()
             description = ("Placa: %s"):format(veh.plate),
             icon = 'car',
             onSelect = function()
-                local confirm = lib.alertDialog({
+                local confirm = pr_lib.alertDialog({
                     header = 'Nova Chave Original',
                     content = ('Deseja comprar uma nova chave original para o veículo %s por R$%s?'):format(veh.plate, Config.LostKeyPrice),
                     centered = true,
@@ -70,7 +70,7 @@ local function showLostKeysMenu()
                         return utils.notify('Você não possui dinheiro suficiente na carteira.', 'error')
                     end
 
-                    local success, reason = lib.callback.await('forge_garage:cb_server:buyOriginalKeyForPlate', false, veh.plate)
+                    local success, reason = GarageBridge.callback.await('forge_garage:cb_server:buyOriginalKeyForPlate', false, veh.plate)
                     if success then
                         utils.notify('Nova chave original criada com sucesso!', 'success')
                     else
@@ -81,17 +81,17 @@ local function showLostKeysMenu()
         }
     end
 
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:key_manager_lost_list',
         title = 'Perdi Minha Chave',
         menu = 'forge_garage:key_manager_main',
         options = options
     })
-    lib.showContext('forge_garage:key_manager_lost_list')
+    pr_lib.showContext('forge_garage:key_manager_lost_list')
 end
 
 local function showTransferMethodMenu(veh)
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:key_manager_transfer_method',
         title = ('Transferir: %s'):format(veh.plate),
         menu = 'forge_garage:key_manager_transfer_list',
@@ -101,21 +101,21 @@ local function showTransferMethodMenu(veh)
                 description = 'Transfere o veículo para a pessoa mais próxima de você',
                 icon = 'user-friends',
                 onSelect = function()
-                    local closestPlayer = lib.getClosestPlayer(GetEntityCoords(cache.ped), 3.0, false)
+                    local closestPlayer = GarageBridge.getClosestPlayer(GetEntityCoords(GarageBridge.cache.ped), 3.0, false)
                     if not closestPlayer then
                         return utils.notify('Nenhum jogador próximo encontrado.', 'error')
                     end
 
                     local serverId = GetPlayerServerId(closestPlayer)
                     
-                    local inputPrice = lib.inputDialog('Definir Preço de Venda', {
+                    local inputPrice = pr_lib.inputDialog('Definir Preço de Venda', {
                         {type = 'number', label = 'Valor de Venda (R$)', required = true, min = 0, default = 0},
                     })
                     
                     if not inputPrice or not inputPrice[1] then return end
                     local salePrice = tonumber(inputPrice[1])
 
-                    local confirm = lib.alertDialog({
+                    local confirm = pr_lib.alertDialog({
                         header = 'Vender Veículo',
                         content = ('Deseja vender/transferir o veículo %s para o jogador ID %d pelo valor de R$%s?'):format(veh.plate, serverId, salePrice),
                         centered = true,
@@ -128,7 +128,7 @@ local function showTransferMethodMenu(veh)
                             plate = veh.plate,
                             price = salePrice
                         }
-                        lib.callback('forge_garage:cb_server:transferVehicle', false, function(success, information)
+                        GarageBridge.callback('forge_garage:cb_server:transferVehicle', false, function(success, information)
                             if not success then
                                 return utils.notify(information or 'Erro ao transferir.', "error")
                             end
@@ -142,7 +142,7 @@ local function showTransferMethodMenu(veh)
                 description = 'Transfere o veículo inserindo o CitizenID (mesmo offline)',
                 icon = 'id-card',
                 onSelect = function()
-                    local input = lib.inputDialog('Vender Veículo', {
+                    local input = pr_lib.inputDialog('Vender Veículo', {
                         {type = 'input', label = 'CitizenID do Destinatário', required = true, placeholder = 'ABC12345'},
                         {type = 'number', label = 'Valor de Venda (R$)', required = true, min = 0, default = 0},
                     })
@@ -151,7 +151,7 @@ local function showTransferMethodMenu(veh)
                         local targetCitizenId = input[1]:gsub("%s+", ""):upper()
                         local salePrice = tonumber(input[2] or 0)
                         
-                        local confirm = lib.alertDialog({
+                        local confirm = pr_lib.alertDialog({
                             header = 'Confirmar Transferência',
                             content = ('Deseja vender/transferir o veículo %s para o CitizenID %s pelo valor de R$%s?'):format(veh.plate, targetCitizenId, salePrice),
                             centered = true,
@@ -164,7 +164,7 @@ local function showTransferMethodMenu(veh)
                                 plate = veh.plate,
                                 price = salePrice
                             }
-                            lib.callback('forge_garage:cb_server:transferVehicleByCitizenId', false, function(success, information)
+                            GarageBridge.callback('forge_garage:cb_server:transferVehicleByCitizenId', false, function(success, information)
                                 if not success then
                                     return utils.notify(information or 'Erro ao transferir.', "error")
                                 end
@@ -176,11 +176,11 @@ local function showTransferMethodMenu(veh)
             }
         }
     })
-    lib.showContext('forge_garage:key_manager_transfer_method')
+    pr_lib.showContext('forge_garage:key_manager_transfer_method')
 end
 
 local function showTransferListMenu()
-    local vehicles = lib.callback.await('forge_garage:cb_server:getOwnedVehiclesForKeys', false)
+    local vehicles = GarageBridge.callback.await('forge_garage:cb_server:getOwnedVehiclesForKeys', false)
     if not vehicles or #vehicles == 0 then
         return utils.notify("Você não possui nenhum veículo registrado em seu nome.", "error")
     end
@@ -198,17 +198,17 @@ local function showTransferListMenu()
         }
     end
 
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:key_manager_transfer_list',
         title = 'Selecionar Veículo para Transferir',
         menu = 'forge_garage:key_manager_main',
         options = options
     })
-    lib.showContext('forge_garage:key_manager_transfer_list')
+    pr_lib.showContext('forge_garage:key_manager_transfer_list')
 end
 
 function openKeyManagerMenu()
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:key_manager_main',
         title = 'Gerenciamento de Chaves e Veículos',
         options = {
@@ -232,7 +232,7 @@ function openKeyManagerMenu()
             }
         }
     })
-    lib.showContext('forge_garage:key_manager_main')
+    pr_lib.showContext('forge_garage:key_manager_main')
 end
 
 exports('openKeyManagerMenu', openKeyManagerMenu)
@@ -243,7 +243,7 @@ RegisterCommand('keymanager', function()
 end, false)
 
 -- Buyer payment callback
-lib.callback.register('forge_garage:cb_client:requestPayment', function(sellerName, vehPlate, vehName, price, taxActive, taxAmount)
+GarageBridge.callback.register('forge_garage:cb_client:requestPayment', function(sellerName, vehPlate, vehName, price, taxActive, taxAmount)
     local p = promise.new()
     local options = {}
 
@@ -285,13 +285,13 @@ lib.callback.register('forge_garage:cb_client:requestPayment', function(sellerNa
         end
     }
 
-    lib.registerContext({
+    pr_lib.registerContext({
         id = 'forge_garage:buyer_payment_menu',
         title = ('Proposta de Compra de %s'):format(sellerName),
         options = options,
         canClose = false
     })
-    lib.showContext('forge_garage:buyer_payment_menu')
+    pr_lib.showContext('forge_garage:buyer_payment_menu')
 
     local choice = Citizen.Await(p)
     return choice

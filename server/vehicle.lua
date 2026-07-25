@@ -20,11 +20,11 @@ function vehFuncS.govbp(plate)
     return false
 end
 
-lib.callback.register('forge_garage:cb_server:GetPlayerVehiclesForPhone', function(source)
+GarageBridge.callback.register('forge_garage:cb_server:GetPlayerVehiclesForPhone', function(source)
     return GarageDB.gvfp(source)
 end)
 
-lib.callback.register('forge_garage:cb_server:getoutsideVehicleCoords', function(_, plate, garage)
+GarageBridge.callback.register('forge_garage:cb_server:getoutsideVehicleCoords', function(_, plate, garage)
     local vehicle = vehFuncS.govbp(plate)
     local coords = vehicle and vehicle.exist and vehicle.coords or nil
     if not coords and garage then

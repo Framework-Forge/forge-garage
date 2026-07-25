@@ -27,6 +27,28 @@ local function tableKeys(source)
     return keys
 end
 
+local function getPersistentZoneAnchor(garage)
+    local points = garage and garage.zones and garage.zones.points
+    if type(points) == 'table' and #points > 0 then
+        local x, y, z = 0.0, 0.0, 0.0
+        for index = 1, #points do
+            local point = points[index]
+            x = x + (tonumber(point.x) or 0.0)
+            y = y + (tonumber(point.y) or 0.0)
+            z = z + (tonumber(point.z) or 0.0)
+        end
+
+        return vec3(x / #points, y / #points, z / #points)
+    end
+
+    local ipl = garage and garage.ipl
+    local firstFloor = ipl and type(ipl.floors) == 'table' and ipl.floors[1]
+    local coords = firstFloor and (firstFloor.coords or firstFloor) or ipl and ipl.exit
+    if coords then
+        return vec3(coords.x, coords.y, coords.z)
+    end
+end
+
 local function normalizePlate(plate)
     if not plate then return nil end
     return tostring(plate):gsub("%s+", ""):upper()
@@ -113,6 +135,41 @@ local function requestEntityControl(entity, timeoutMs)
     end
 
     return DoesEntityExist(entity) and NetworkHasControlOfEntity(entity)
+end
+
+local function settlePersistentVehicle(vehicle, coords)
+    if not vehicle or vehicle == 0 or not DoesEntityExist(vehicle) or not coords then return false end
+
+    FreezeEntityPosition(vehicle, false)
+    SetEntityCollision(vehicle, true, true)
+    SetEntityLoadCollisionFlag(vehicle, true)
+    SetEntityCoordsNoOffset(vehicle, coords.x, coords.y, coords.z + 0.5, false, false, false)
+    SetEntityHeading(vehicle, coords.h or coords.w or 0.0)
+    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+
+    local collisionDeadline = GetGameTimer() + 2500
+    while not HasCollisionLoadedAroundEntity(vehicle) and GetGameTimer() < collisionDeadline do
+        RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+        Wait(50)
+    end
+
+    local grounded = false
+    for _ = 1, 20 do
+        if SetVehicleOnGroundProperly(vehicle) then
+            grounded = true
+            break
+        end
+        Wait(50)
+    end
+
+    if not grounded then
+        SetEntityCoordsNoOffset(vehicle, coords.x, coords.y, coords.z, false, false, false)
+    end
+
+    SetEntityHeading(vehicle, coords.h or coords.w or 0.0)
+    SetEntityVelocity(vehicle, 0.0, 0.0, 0.0)
+    Wait(100)
+    return grounded
 end
 
 local function unlockPersistentVehicle(vehicle)
@@ -205,7 +262,7 @@ local function hasDriverKeyForPlate(plate)
         return cached.value == true
     end
 
-    local value = lib.callback.await('forge_garage:cb_server:hasKeyForPlate', false, plate) == true
+    local value = GarageBridge.callback.await('forge_garage:cb_server:hasKeyForPlate', false, plate) == true
     driverKeyCache[key] = {
         value = value,
         expires = now + 1500
@@ -328,23 +385,49 @@ local function setupPersistentGarages()
     if not GarageZone then return end
 
     local garageKeys = tableKeys(GarageZone)
+    local registered = 0
+    local persistentConfigured = 0
+    local streamingRadius = math.max(tonumber(Config.PersistentDistance) or 300.0, 50.0)
+
     for i = 1, #garageKeys do
         local k = garageKeys[i]
         local v = GarageZone[k]
-        local firstFloor = v and v.ipl and v.ipl.floors and v.ipl.floors[1]
-        local first = v and (v.zones and v.zones.points and v.zones.points[1] or firstFloor and (firstFloor.coords or firstFloor) or v.ipl and v.ipl.exit)
-        if v and v.persist and first then
-            activeZones[k] = lib.zones.sphere({
-                coords = vec3(first.x, first.y, first.z),
-                radius = 80.0,
+        if v and v.persist then
+            persistentConfigured = persistentConfigured + 1
+        end
+        local anchor = v and v.persist and getPersistentZoneAnchor(v)
+        if anchor then
+            activeZones[k] = GarageBridge.zones.sphere({
+                coords = anchor,
+                radius = streamingRadius,
                 onEnter = function()
+                    if Config.InDevelopment then
+                        print(('[forge-garage][persistent] enter garage=%s'):format(k))
+                    end
                     TriggerServerEvent('forge_garage:server:enterPersistentZone', k)
                 end,
                 onExit = function()
+                    if Config.InDevelopment then
+                        print(('[forge-garage][persistent] exit garage=%s'):format(k))
+                    end
                     TriggerServerEvent('forge_garage:server:exitPersistentZone', k)
                 end
             })
+            registered = registered + 1
+            if Config.InDevelopment then
+                print(('[forge-garage][persistent] zone garage=%s coords=%.2f,%.2f,%.2f radius=%.1f'):format(
+                    k, anchor.x, anchor.y, anchor.z, streamingRadius
+                ))
+            end
+        elseif v and v.persist then
+            print(('[forge-garage][persistent] missing zone anchor garage=%s'):format(k))
         end
+    end
+
+    if Config.InDevelopment then
+        print(('[forge-garage][persistent] setup complete registered=%d configured=%d'):format(
+            registered, persistentConfigured
+        ))
     end
 end
 
@@ -556,7 +639,7 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
                 end
 
                 if HasModelLoaded(model) then
-                    local veh = CreateVehicle(model, coords.x, coords.y, coords.z, coords.h, true, false)
+                    local veh = CreateVehicle(model, coords.x, coords.y, coords.z + 0.5, coords.h, true, false)
                     
                     local spawnTimer = 0
                     while not DoesEntityExist(veh) and spawnTimer < 100 do
@@ -568,7 +651,7 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
                         local mods = type(data.mods) == 'table' and data.mods or json.decode(data.mods)
                         if mods then
                             pcall(function()
-                                lib.setVehicleProperties(veh, mods)
+                                GarageBridge.setVehicleProperties(veh, mods)
                             end)
                         end
 
@@ -586,10 +669,12 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
                         local deformation = type(data.deformation) == 'table' and data.deformation or json.decode(data.deformation or '{}')
                         if deformation then
                             pcall(function()
-                                local Deformation = require 'modules.deformation'
+                                local Deformation = GarageBridge.loadModule('modules.deformation')
                                 Deformation.set(veh, deformation)
                             end)
                         end
+
+                        settlePersistentVehicle(veh, coords)
 
                         SetVehicleDoorsLocked(veh, 2) -- Locked
                         Entity(veh).state:set("doorslockstate", 2, true)
@@ -670,7 +755,7 @@ end)
 CreateThread(function()
     while true do
         local sleep = 500
-        local ped = cache.ped
+        local ped = GarageBridge.cache.ped
         local vehicle = GetVehiclePedIsIn(ped, false)
         
         if vehicle ~= 0 and GetPedInVehicleSeat(vehicle, -1) == ped then
@@ -710,7 +795,7 @@ end)
 CreateThread(function()
     while true do
         local sleep = 500
-        local ped = cache.ped
+        local ped = GarageBridge.cache.ped
         local pos = GetEntityCoords(ped)
         
         local closestVeh = 0

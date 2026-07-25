@@ -1,11 +1,11 @@
 local pedcreator = {}
 
-local pedlist = lib.loadJson('data.peds')
+local pedlist = GarageBridge.loadJson('data.peds')
 
 local curPed = nil
 local busycreate = false
 local glm = require "glm"
-local debugzone = require 'modules.debugzone'
+local debugzone = GarageBridge.loadModule('modules.debugzone')
 
 local function CancelPlacement()
     DeletePed(curPed)
@@ -41,7 +41,7 @@ function pedcreator.start(zone)
     ]]
 
     utils.drawtext('show', text)
-    lib.requestModel(pedmodels, 150000)
+    GarageBridge.requestModel(pedmodels, 150000)
     curPed = CreatePed(0, pedmodels, 1.0, 1.0, 1.0, 0.0, false, false)
     SetEntityAlpha(curPed, 150, false)
     SetEntityCollision(curPed, false, false)
@@ -91,7 +91,7 @@ function pedcreator.start(zone)
                 local newModel = pedlist[newIndex]
                 if newModel then
                     DeleteEntity(curPed)
-                    lib.requestModel(newModel)
+                    GarageBridge.requestModel(newModel)
                     local newped = CreatePed(0, newModel, 1.0, 1.0, 1.0, 0.0, false, false)
                     SetEntityAlpha(newped, 150, false)
                     SetEntityCollision(newped, false, false)
@@ -108,7 +108,7 @@ function pedcreator.start(zone)
                     local newModel = pedlist[newIndex]
                     if newModel then
                         DeleteEntity(curPed)
-                        lib.requestModel(newModel)
+                        GarageBridge.requestModel(newModel)
                         local newped = CreatePed(0, newModel, 1.0, 1.0, 1.0, 0.0, false, false)
                         SetEntityAlpha(newped, 150, false)
                         SetEntityCollision(newped, false, false)

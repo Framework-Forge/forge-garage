@@ -1,4 +1,3 @@
-if not lib.checkDependency('ox_lib', '3.23.1') then error('This resource requires ox_lib version 3.23.1') end
 local activeGarages = {}
 local activeStoredVehicles = {}
 local storedVehiclesGarage = {}
@@ -169,11 +168,11 @@ local function removeTrackedPersistentVehicle(garageName, plate, netId)
 end
 
 --- callback
-lib.callback.register('forge_garage:cb_server:removeMoney', function(src, type, amount)
+GarageBridge.callback.register('forge_garage:cb_server:removeMoney', function(src, type, amount)
     return pr_lib.framework.RemovePlayerAccountBalance(src, type, amount, "Garage interaction")
 end)
 
-lib.callback.register('forge_garage:cb_server:pullVehicleFromBucket', function(source, plate, coords, garageName)
+GarageBridge.callback.register('forge_garage:cb_server:pullVehicleFromBucket', function(source, plate, coords, garageName)
     local src = source
     local entity, netId = getTrackedPersistentVehicle(garageName, plate)
     
@@ -202,24 +201,24 @@ lib.callback.register('forge_garage:cb_server:pullVehicleFromBucket', function(s
     return { success = false }
 end)
 
-lib.callback.register('forge_garage:cb_server:getvehowner', function (src, plate, shared, pleaseUpdate)
+GarageBridge.callback.register('forge_garage:cb_server:getvehowner', function (src, plate, shared, pleaseUpdate)
     return GarageDB.gvobp(src, plate, {
         owner = shared
     }, pleaseUpdate)
 end)
 
-lib.callback.register('forge_garage:cb_server:getvehiclePropByPlate', function (_, plate)
+GarageBridge.callback.register('forge_garage:cb_server:getvehiclePropByPlate', function (_, plate)
     return GarageDB.gpvbp(plate)
 end)
 
-lib.callback.register('forge_garage:cb_server:getVehicleList', function(src, garage, impound, shared)
+GarageBridge.callback.register('forge_garage:cb_server:getVehicleList', function(src, garage, impound, shared)
     return GarageDB.gpvbg(src, garage, {
         impound = impound,
         shared = shared
     })
 end)
 
-lib.callback.register("forge_garage:cb_server:swapGarage", function (source, clientData)
+GarageBridge.callback.register("forge_garage:cb_server:swapGarage", function (source, clientData)
     return GarageDB.svg(clientData.newgarage, clientData.plate)
 end)
 
@@ -246,7 +245,7 @@ end
 
 local function handleInteractiveSale(src, targetSrc, plate, price)
     if src == targetSrc then
-        return false, locale("notify.error.cannot_transfer_to_myself")
+        return false, GarageBridge.locale("notify.error.cannot_transfer_to_myself")
     end
 
     local buyer = pr_lib.framework.GetPlayer(targetSrc)
@@ -265,7 +264,7 @@ local function handleInteractiveSale(src, targetSrc, plate, price)
         local vehName = vehInfo and (vehInfo.fullname or vehInfo.model) or plate
         local sellerName = pr_lib.framework.GetPlayerName(src)
 
-        local choice = lib.callback.await('forge_garage:cb_client:requestPayment', targetSrc, sellerName, plate, vehName, price, taxActive, taxAmount)
+        local choice = GarageBridge.callback.await('forge_garage:cb_client:requestPayment', targetSrc, sellerName, plate, vehName, price, taxActive, taxAmount)
         
         if not choice or choice == 'decline' then
             return false, "A proposta de compra foi recusada pelo comprador."
@@ -313,15 +312,88 @@ local function handleInteractiveSale(src, targetSrc, plate, price)
     end
 end
 
-lib.callback.register("forge_garage:cb_server:transferVehicle", function (src, clientData)
+GarageBridge.callback.register("forge_garage:cb_server:transferVehicle", function (src, clientData)
     local targetSrc = tonumber(clientData.targetSrc)
     local plate = clientData.plate
     local price = tonumber(clientData.price or 0)
     return handleInteractiveSale(src, targetSrc, plate, price)
 end)
 
-lib.callback.register('forge_garage:cb_server:getVehicleInfoByPlate', function (_, plate)
+GarageBridge.callback.register('forge_garage:cb_server:getVehicleInfoByPlate', function (_, plate)
     return GarageDB.gpvbp(plate)
+end)
+
+local function hasGarageAdminAccess(source)
+    if source == 0 then return true end
+    if IsPlayerAceAllowed(source, "group.admin")
+        or IsPlayerAceAllowed(source, "admin")
+        or IsPlayerAceAllowed(source, "command.garagelist") then
+        return true
+    end
+
+    local hasPermission = pr_lib.framework and pr_lib.framework.HasPermission
+    if type(hasPermission) == "function" then
+        local ok, allowed = pcall(hasPermission, source, { "god", "admin" })
+        if ok and allowed then return true end
+    end
+
+    return false
+end
+
+GarageBridge.callback.register('forge_garage:cb_server:getPersistentGarageVehicles', function(source, garageName)
+    if not hasGarageAdminAccess(source) then
+        return { allowed = false, vehicles = {} }
+    end
+    if type(garageName) ~= "string" or not GarageZone or not GarageZone[garageName] then
+        return { allowed = true, vehicles = {} }
+    end
+
+    local rows = GarageDB.getPersistentVehicles(garageName)
+    local vehicles = {}
+
+    for i = 1, #rows do
+        local row = rows[i]
+        local coords = row.parking_coords
+        if type(coords) == "string" then
+            local ok, decoded = pcall(json.decode, coords)
+            coords = ok and decoded or nil
+        end
+
+        local entity, netId = getTrackedPersistentVehicle(garageName, row.plate)
+        local spawned = entity and DoesEntityExist(entity) or false
+        local entityBucket = spawned and GetEntityRoutingBucket(entity) or nil
+        local garageData = GarageZone[garageName]
+        local expectedBucket = garageData.ipl and garageData.ipl.enabled and (garageData.ipl.bucket or 0) or 0
+        local rendered = spawned and entityBucket == expectedBucket
+
+        if spawned then
+            local entityCoords = GetEntityCoords(entity)
+            coords = {
+                x = entityCoords.x,
+                y = entityCoords.y,
+                z = entityCoords.z,
+                h = GetEntityHeading(entity),
+            }
+        end
+
+        vehicles[#vehicles + 1] = {
+            plate = row.plate,
+            vehicle = row.vehicle,
+            label = row.vehicle_name,
+            coords = coords,
+            spawned = spawned == true,
+            rendered = rendered == true,
+            netId = spawned and netId or nil,
+            bucket = entityBucket,
+            expectedBucket = expectedBucket,
+        }
+    end
+
+    table.sort(vehicles, function(a, b)
+        return tostring(a.plate or "") < tostring(b.plate or "")
+    end)
+
+    return { allowed = true, vehicles = vehicles }
 end)
 
 --- Event
@@ -333,7 +405,7 @@ RegisterNetEvent("forge_garage:server:removeTemp", function ( data )
     end
 end)
 
-lib.addCommand('removeTemp', {
+GarageBridge.addCommand('removeTemp', {
     help = 'Recuperar garagem de player',
     restricted = 'group.admin',
     params = {
@@ -344,10 +416,10 @@ lib.addCommand('removeTemp', {
         local citizenid = pr_lib.framework.GetIdentifier(tonumber(args.id))
         local playerName = pr_lib.framework.GetPlayerName(tonumber(args.id))
         tempVehicle[citizenid] = nil
-        lib.notify(tonumber(args.id), {description = "Seus veículos de aluguel foram recuperados.", type = "success", duration = 10000})
-        lib.notify(source, {description = "Garagem recuperada do id: " .. args.id .. " cidadão: " .. citizenid .. " de nome " .. playerName .. ".", type = "success", duration = 10000})
+        GarageBridge.notify(tonumber(args.id), {description = "Seus veículos de aluguel foram recuperados.", type = "success", duration = 10000})
+        GarageBridge.notify(source, {description = "Garagem recuperada do id: " .. args.id .. " cidadão: " .. citizenid .. " de nome " .. playerName .. ".", type = "success", duration = 10000})
     else
-        lib.notify(source, {description = "ID inválido.", type = "error", duration = 10000})
+        GarageBridge.notify(source, {description = "ID inválido.", type = "error", duration = 10000})
     end
 end)
 
@@ -416,7 +488,7 @@ end)
 
 local vehicleSpawnCooldown = {}
 
-lib.callback.register('forge_garage:server:spawnVehicle', function(source, model, coords, props)
+GarageBridge.callback.register('forge_garage:server:spawnVehicle', function(source, model, coords, props)
     local playerId = source
 
     if vehicleSpawnCooldown[playerId] then
@@ -425,12 +497,11 @@ lib.callback.register('forge_garage:server:spawnVehicle', function(source, model
 
     vehicleSpawnCooldown[playerId] = true
 
-    local netid, veh = qbx.spawnVehicle({
-        model = model,
-        spawnSource = coords,
-        warp = false,
-        props = props
-    })
+    local netid, veh = GarageBridge.spawnVehicle(model, coords, props)
+    if not netid or not veh or not DoesEntityExist(veh) then
+        vehicleSpawnCooldown[playerId] = nil
+        return false, false
+    end
 
     if GetResourceState('pr_carkeys') == 'started' then
         exports['pr_carkeys']:SetLockState(veh, 2)
@@ -457,7 +528,7 @@ end)
 
 -- Key Manager Callbacks
 
-lib.callback.register('forge_garage:cb_server:getPlayerKeyItems', function(source)
+GarageBridge.callback.register('forge_garage:cb_server:getPlayerKeyItems', function(source)
     local src = source
     local keysList = {}
     
@@ -498,7 +569,7 @@ lib.callback.register('forge_garage:cb_server:getPlayerKeyItems', function(sourc
     return keysList
 end)
 
-lib.callback.register('forge_garage:cb_server:getOwnedVehiclesForKeys', function(source)
+GarageBridge.callback.register('forge_garage:cb_server:getOwnedVehiclesForKeys', function(source)
     local src = source
     local citizenid = pr_lib.framework.GetIdentifier(src)
     if not citizenid then return {} end
@@ -528,7 +599,7 @@ lib.callback.register('forge_garage:cb_server:getOwnedVehiclesForKeys', function
     return vehicles
 end)
 
-lib.callback.register('forge_garage:cb_server:copyInventoryKey', function(source, barcode)
+GarageBridge.callback.register('forge_garage:cb_server:copyInventoryKey', function(source, barcode)
     local src = source
     if pr_lib.framework.RemovePlayerAccountBalance(src, "cash", Config.GiveKeys.price, "Key Copy Fee") then
         local result = exports["pr_carkeys"]:CopyKey(src, barcode)
@@ -544,7 +615,7 @@ lib.callback.register('forge_garage:cb_server:copyInventoryKey', function(source
     end
 end)
 
-lib.callback.register('forge_garage:cb_server:buyOriginalKeyForPlate', function(source, plate)
+GarageBridge.callback.register('forge_garage:cb_server:buyOriginalKeyForPlate', function(source, plate)
     local src = source
     if pr_lib.framework.RemovePlayerAccountBalance(src, "cash", Config.LostKeyPrice, "Lost Key Replacement Fee") then
         local result = exports["pr_carkeys"]:BuyOriginalKey(src, plate)
@@ -560,7 +631,7 @@ lib.callback.register('forge_garage:cb_server:buyOriginalKeyForPlate', function(
     end
 end)
 
-lib.callback.register('forge_garage:cb_server:transferVehicleByCitizenId', function(source, clientData)
+GarageBridge.callback.register('forge_garage:cb_server:transferVehicleByCitizenId', function(source, clientData)
     local src = source
     local targetCitizenId = clientData.targetCitizenId
     local plate = clientData.plate
@@ -890,7 +961,7 @@ AddEventHandler('playerDropped', function()
 end)
 
 -- Callback to check if player holds keys for a vehicle plate in their inventory
-lib.callback.register('forge_garage:cb_server:hasKeyForPlate', function(source, plate)
+GarageBridge.callback.register('forge_garage:cb_server:hasKeyForPlate', function(source, plate)
     local src = source
     local targetPlate = normalizePlate(plate)
     if not targetPlate then return false end
@@ -979,7 +1050,7 @@ RegisterNetEvent('forge_garage:server:withdrawPersistentVehicle', function(garag
         
         removeTrackedPersistentVehicle(garageName, plate, netId)
 
-        -- Detach the already spawned entity from the persistent garage cache.
+        -- Detach the already spawned entity from the persistent garage GarageBridge.cache.
         -- This does not spawn or warp anything; it only stops treating the current entity as parked.
         TriggerClientEvent('forge_garage:client:detachPersistentVehicle', -1, plate, netId)
     end

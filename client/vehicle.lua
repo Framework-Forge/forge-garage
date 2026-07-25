@@ -3,7 +3,7 @@ vehFunc = {}
 --- Get Vehicle Info By Plate
 ---@param plate string
 function vehFunc.gvibp(plate)
-    local vehInfo = lib.callback.await('forge_garage:cb_server:getVehicleInfoByPlate', false, plate)
+    local vehInfo = GarageBridge.callback.await('forge_garage:cb_server:getVehicleInfoByPlate', false, plate)
     return vehInfo and next(vehInfo) and vehInfo or false 
 end
 
@@ -36,7 +36,7 @@ end
 ---@param plate any
 ---@param garage string
 function vehFunc.tvbp(plate, garage, setPoint)
-    local coords = lib.callback.await("forge_garage:cb_server:getoutsideVehicleCoords", false, plate, garage)
+    local coords = GarageBridge.callback.await("forge_garage:cb_server:getoutsideVehicleCoords", false, plate, garage)
     if not coords then return false end
     if setPoint then
         SetNewWaypoint(coords.x, coords.y)
@@ -47,19 +47,19 @@ end
 --- Get Players Vehicle For Phone
 ---@return table
 function vehFunc.gpvfp()
-    return lib.callback.await('forge_garage:cb_server:GetPlayerVehiclesForPhone')
+    return GarageBridge.callback.await('forge_garage:cb_server:GetPlayerVehiclesForPhone')
 end
 
 --- Get Vehicle Properties
 ---@param vehicle string | integer
 function vehFunc.gvp(vehicle)
-    return lib.getVehicleProperties(vehicle)
+    return GarageBridge.getVehicleProperties(vehicle)
 end
 
 ---@param vehicle string | integer
 ---@param props table
 function vehFunc.svp(vehicle, props)
-    return lib.setVehicleProperties(vehicle, props)
+    return GarageBridge.setVehicleProperties(vehicle, props)
 end
 
 --- exports

@@ -193,7 +193,7 @@ function GarageDB.uvo(oldOwnerId, newOwnerId, plate)
     local mp = pr_lib.framework.GetPlayer(oldOwnerId)
     local tp = pr_lib.framework.GetPlayer(newOwnerId)
     if not mp then return false end
-    if not tp then return false, locale("notify.error.player_offline", newOwnerId) end
+    if not tp then return false, GarageBridge.locale("notify.error.player_offline", newOwnerId) end
 
     local tpLicense = (tp.PlayerData and tp.PlayerData.license) or tp.license
     local tpCitizenid = (tp.PlayerData and tp.PlayerData.citizenid) or tp.citizenid
@@ -294,12 +294,12 @@ function GarageDB.gvfp(src)
             local customName = CNV[plate] and CNV[plate].name
             local vehname = customName or defaultname
 
-            local stateText = locale('status.in')
+            local stateText = GarageBridge.locale('status.in')
 
             if v.state == 0 then
-                stateText = vehFuncS.govbp(plate) and locale('status.out') or locale('status.insurance')
+                stateText = vehFuncS.govbp(plate) and GarageBridge.locale('status.out') or GarageBridge.locale('status.insurance')
             elseif v.state == 2 then
-                stateText = locale('status.confiscated')
+                stateText = GarageBridge.locale('status.confiscated')
             end
 
             local inInsurance = v.state == 0
@@ -368,7 +368,7 @@ function GarageDB.uvoByCitizenId(oldOwnerId, newCitizenId, plate)
     if update > 0 then
         if tp then
             local tpSource = (tp.PlayerData and tp.PlayerData.source) or tp.source
-            utils.notify(tpSource, locale("notify.success.transferveh.target", pr_lib.framework.GetPlayerName(oldOwnerId), ""), "success")
+            utils.notify(tpSource, GarageBridge.locale("notify.success.transferveh.target", pr_lib.framework.GetPlayerName(oldOwnerId), ""), "success")
         end
         return true, newOwnerName
     end
@@ -378,7 +378,7 @@ end
 --- Get Persistent Vehicles In Garage
 function GarageDB.getPersistentVehicles(garageName)
     local results = MySQL.query.await([[
-        SELECT plate, vehicle, mods, deformation, fuel, engine, body, parking_coords
+        SELECT plate, vehicle, vehicle_name, mods, deformation, fuel, engine, body, parking_coords
         FROM player_vehicles
         WHERE garage = ? AND state = 1 AND parking_coords IS NOT NULL
     ]], {garageName})

@@ -1,4 +1,4 @@
---- Source https://github.com/overextended/ox_lib/blob/master/imports/zones/client.lua
+--- Standalone debug helpers vendored locally for forge-garage zones.
 
 local function getTriangles(polygon)
     local triangles = {}

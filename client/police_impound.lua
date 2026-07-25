@@ -1,7 +1,7 @@
 if not Config.UsePoliceImpound then return end
 
 local VehicleShow = nil
-local Deformation = require 'modules.deformation'
+local Deformation = GarageBridge.loadModule('modules.deformation')
 
 PoliceImpound = {}
 
@@ -14,11 +14,11 @@ end
 
 ---@param data GarageVehicleData
 local function spawnvehicle ( data )
-    local vehData = lib.callback.await('forge_garage:cb_server:getvehiclePropByPlate', false, data.plate)
+    local vehData = GarageBridge.callback.await('forge_garage:cb_server:getvehiclePropByPlate', false, data.plate)
     if not vehData then return error('Failed to load vehicle data with number plate ' .. data.plate) end
     local vehEntity = utils.createPlyVeh(vehData.model, data.coords, false, true, vehData.mods)
     SetVehicleOnGroundProperly(vehEntity)
-    if Config.SpawnInVehicle then TaskWarpPedIntoVehicle(cache.ped, vehEntity, -1) end
+    if Config.SpawnInVehicle then TaskWarpPedIntoVehicle(GarageBridge.cache.ped, vehEntity, -1) end
     SetVehicleEngineHealth(vehEntity, vehData.engine + 0.0)
     SetVehicleBodyHealth(vehEntity, vehData.body + 0.0)
     utils.setFuel(vehEntity, vehData.fuel)
@@ -33,7 +33,7 @@ end
 local function openpoliceImpound ( garage )
     local garage = garage.label
 
-    local vehicle = lib.callback.await("forge_garage:cb_server:policeImpound.getVehicle", false, garage)
+    local vehicle = GarageBridge.callback.await("forge_garage:cb_server:policeImpound.getVehicle", false, garage)
 
     local context = {
         id = "forge_garage:policeImpound",
@@ -56,15 +56,15 @@ local function openpoliceImpound ( garage )
             local paid = v.paid
             local date = v.date
 
-            local paidstatus = locale("context.policeImpound.not_paid")
+            local paidstatus = GarageBridge.locale("context.policeImpound.not_paid")
 
             if paid > 0 then
-                paidstatus = locale("context.policeImpound.paid")
+                paidstatus = GarageBridge.locale("context.policeImpound.paid")
             end
 
             context.options[#context.options+1] = {
                 title = ("%s [%s]"):format(vehname, plate:upper()),
-                description = locale("context.policeImpound.vehdescription", fine, paidstatus),
+                description = GarageBridge.locale("context.policeImpound.vehdescription", fine, paidstatus),
                 metadata = {
                     OWNER = owner,
                     OFFICER = officer,
@@ -72,9 +72,9 @@ local function openpoliceImpound ( garage )
                 },
                 iconAnimation = Config.IconAnimation,
                 onSelect = function ()
-                    local coords = vec(GetOffsetFromEntityInWorldCoords(cache.ped, 0.0, 2.0, 0.5), GetEntityHeading(cache.ped)+90)
-                    local vehInArea = lib.getClosestVehicle(coords.xyz)
-                    if DoesEntityExist(vehInArea) then return utils.notify(locale('notify.error.no_parking_spot'), 'error') end
+                    local coords = vec(GetOffsetFromEntityInWorldCoords(GarageBridge.cache.ped, 0.0, 2.0, 0.5), GetEntityHeading(GarageBridge.cache.ped)+90)
+                    local vehInArea = GarageBridge.getClosestVehicle(coords.xyz)
+                    if DoesEntityExist(vehInArea) then return utils.notify(GarageBridge.locale('notify.error.no_parking_spot'), 'error') end
 
                     VehicleShow = utils.createPlyVeh(props.model, coords)
                     NetworkFadeInEntity(VehicleShow, true, false)
@@ -93,7 +93,7 @@ local function openpoliceImpound ( garage )
                         options = {
                             {
                                 title = ("%s [%s]"):format(vehname, plate:upper()),
-                                description = locale("context.policeImpound.vehdescription", fine, paidstatus),
+                                description = GarageBridge.locale("context.policeImpound.vehdescription", fine, paidstatus),
                                 metadata = {
                                     OWNER = owner,
                                     OFFICER = officer,
@@ -106,7 +106,7 @@ local function openpoliceImpound ( garage )
 
                     if paid < 1 then
                         context2.options[#context2.options+1] = {
-                            title = locale("context.policeImpound.sendBill"),
+                            title = GarageBridge.locale("context.policeImpound.sendBill"),
                             icon = "dollar-sign",
                             iconAnimation = Config.IconAnimation,
                             onSelect = function ()
@@ -116,17 +116,17 @@ local function openpoliceImpound ( garage )
                         }
                     elseif paid > 0 then
                         context2.options[#context2.options+1] = {
-                            title = locale("context.policeImpound.takeOutVeh"),
+                            title = GarageBridge.locale("context.policeImpound.takeOutVeh"),
                             icon = "car",
                             iconAnimation = Config.IconAnimation,
                             onSelect = function ()
                                 deletePreviewVehicle()
-                                local checkkDate, day = lib.callback.await("forge_garage:cb_server:policeImpound.cekDate", false, date)
+                                local checkkDate, day = GarageBridge.callback.await("forge_garage:cb_server:policeImpound.cekDate", false, date)
 
                                 local continue, takeout = false, false
 
                                 if not checkkDate then
-                                    local alert = lib.alertDialog({
+                                    local alert = pr_lib.alertDialog({
                                         header = ("Halo %s"):format(pr_lib.framework.GetPlayerName()),
                                         content = ("O tempo de confisco deste veículo ainda é %s dias, você quer manter este veículo?"):format(day),
                                         centered = true,
@@ -153,7 +153,7 @@ local function openpoliceImpound ( garage )
                                 if takeout then
                                     local data = {
                                         props = props,
-                                        coords = vec4(GetEntityCoords(cache.ped), GetEntityHeading(cache.ped)),
+                                        coords = vec4(GetEntityCoords(GarageBridge.cache.ped), GetEntityHeading(GarageBridge.cache.ped)),
                                         plate = plate,
                                         deformation = deformation
                                     }
@@ -197,11 +197,11 @@ local function impoundVehicle (vehicle)
     local garageList = checkAvailableGarage()
 
     if not vehdata then return
-        utils.notify(locale('notify.error.npc_vehicle'), 'error')
+        utils.notify(GarageBridge.locale('notify.error.npc_vehicle'), 'error')
     end
 
     if #garageList < 1 then return
-        utils.notify(locale('no_available_policeimpound_location'), 'error', 12000)
+        utils.notify(GarageBridge.locale('no_available_policeimpound_location'), 'error', 12000)
     end
 
     local vehName = vehdata.vehicle_name or utils.getVehicleLabel(vehdata.vehicle)
@@ -213,11 +213,11 @@ local function impoundVehicle (vehicle)
     local ownerCitizenid = owner.citizenid
     local officerName = pr_lib.framework.GetPlayerName()
 
-    local input = lib.inputDialog(("%s [%s]"):format(vehlabel, plate:upper()), {
-        { type = 'input', label = locale('input.police_impound.veh_owner'), placeholder = ownerName:upper(), disabled = true },
-        { type = 'number', label = locale('input.police_impound.fine'), required = true, default = 10000, min = 1, max = 1000000 },
-        { type = 'select', label = locale('input.police_impound.confiscate_garage_loc'), options = garageList, default = garageList[1] },
-        { type = 'date', label = locale('input.police_impound.confiscate_until'), icon = {'far', 'calendar'}, default = true, format = "DD/MM/YYYY" }
+    local input = pr_lib.inputDialog(("%s [%s]"):format(vehlabel, plate:upper()), {
+        { type = 'input', label = GarageBridge.locale('input.police_impound.veh_owner'), placeholder = ownerName:upper(), disabled = true },
+        { type = 'number', label = GarageBridge.locale('input.police_impound.fine'), required = true, default = 10000, min = 1, max = 1000000 },
+        { type = 'select', label = GarageBridge.locale('input.police_impound.confiscate_garage_loc'), options = garageList, default = garageList[1] },
+        { type = 'date', label = GarageBridge.locale('input.police_impound.confiscate_until'), icon = {'far', 'calendar'}, default = true, format = "DD/MM/YYYY" }
     })
 
     if input then
@@ -234,9 +234,9 @@ local function impoundVehicle (vehicle)
             deformation = Deformation.get(vehicle)
         }
 
-        if lib.progressBar({
+        if GarageBridge.progressBar({
             duration = 5000,
-            label = locale('progressbar.confiscate_vehicle'),
+            label = GarageBridge.locale('progressbar.confiscate_vehicle'),
             useWhileDead = false,
             canCancel = true,
             disable = {
@@ -266,15 +266,15 @@ local function impoundVehicle (vehicle)
             },
         })
         then
-            lib.callback('forge_garage:cb_server:policeImpound.impoundveh', false, function ( success )
+            GarageBridge.callback('forge_garage:cb_server:policeImpound.impoundveh', false, function ( success )
                 SetEntityAsMissionEntity(vehicle, true, true)
                 DeleteVehicle(vehicle)
-                utils.notify(locale('notify.success.confiscate_vehicle', ownerName, input[3]), "success")
+                utils.notify(GarageBridge.locale('notify.success.confiscate_vehicle', ownerName, input[3]), "success")
             end, sendToServer)
 
-            ClearPedTasks(cache.ped)
+            ClearPedTasks(GarageBridge.cache.ped)
         else
-            ClearPedTasks(cache.ped)
+            ClearPedTasks(GarageBridge.cache.ped)
         end
     end
 end
@@ -294,7 +294,7 @@ local function setUpTarget ( )
     }
 
     local TargetData = Config.PoliceImpound.Target
-    local TargetLable = locale('target.confiscate_veh')
+    local TargetLable = GarageBridge.locale('target.confiscate_veh')
 
     if Config.Target == "ox" then
         exports.ox_target:addGlobalVehicle({
@@ -327,42 +327,42 @@ local function setUpTarget ( )
 end
 
 --- Client Callback
-lib.callback.register("forge_garage:cb_client:sendFine", function ( fine )
+GarageBridge.callback.register("forge_garage:cb_client:sendFine", function ( fine )
     local paid, continue = false, false
 
-    local alert = lib.alertDialog({
-        header = locale('input.police_impound.fine_header', pr_lib.framework.GetPlayerName()),
-        content = locale('input.police_impound.fine_content', lib.math.groupdigits(fine, '.')),
+    local alert = pr_lib.alertDialog({
+        header = GarageBridge.locale('input.police_impound.fine_header', pr_lib.framework.GetPlayerName()),
+        content = GarageBridge.locale('input.police_impound.fine_content', GarageBridge.math.groupdigits(fine, '.')),
         centered = true,
         cancel = true,
         labels = {
-            confirm = locale('input.police_impound.fine_pay'),
-            cancel = locale('input.police_impound.fine_ignore')
+            confirm = GarageBridge.locale('input.police_impound.fine_pay'),
+            cancel = GarageBridge.locale('input.police_impound.fine_ignore')
         }
     })
 
     if alert == "confirm" then
         utils.createMenu({
             id = 'forge_garage:policeImpound.payoptions',
-            title = locale('context.insurance.pay_methode_header'):upper(),
+            title = GarageBridge.locale('context.insurance.pay_methode_header'):upper(),
             onExit = function ()
                 continue = true
             end,
             options = {
                 {
-                    title = locale('context.insurance.pay_methode_cash_title'):upper(),
+                    title = GarageBridge.locale('context.insurance.pay_methode_cash_title'):upper(),
                     icon = 'dollar-sign',
                     iconAnimation = Config.IconAnimation,
-                    description = locale('context.insurance.pay_methode_cash_title_desc'),
+                    description = GarageBridge.locale('context.insurance.pay_methode_cash_title_desc'),
                     onSelect = function ()
 
                         if pr_lib.framework.GetMoney('cash') < fine then
                             continue = true
-                            utils.notify(locale('notify.error.not_enough_cash'), 'error')
+                            utils.notify(GarageBridge.locale('notify.error.not_enough_cash'), 'error')
                             return
                         end
 
-                        local success = lib.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', fine)
+                        local success = GarageBridge.callback.await('forge_garage:cb_server:removeMoney', false, 'cash', fine)
 
                         if success then
                             paid = true
@@ -374,18 +374,18 @@ lib.callback.register("forge_garage:cb_client:sendFine", function ( fine )
                     end
                 },
                 {
-                    title = locale('context.insurance.pay_methode_bank_title'):upper(),
+                    title = GarageBridge.locale('context.insurance.pay_methode_bank_title'):upper(),
                     icon = 'fab fa-cc-mastercard',
                     iconAnimation = Config.IconAnimation,
-                    description = locale('context.insurance.pay_methode_bank_title_desc'),
+                    description = GarageBridge.locale('context.insurance.pay_methode_bank_title_desc'),
                     onSelect = function ()
                         if pr_lib.framework.GetMoney('bank') < fine then
                             continue = true
-                            utils.notify(locale('notify.error.not_enough_bank'), 'error')
+                            utils.notify(GarageBridge.locale('notify.error.not_enough_bank'), 'error')
                             return
                         end
 
-                        local success = lib.callback.await('forge_garage:cb_server:removeMoney', false, 'bank', fine)
+                        local success = GarageBridge.callback.await('forge_garage:cb_server:removeMoney', false, 'bank', fine)
 
                         if success then
                             paid = true
@@ -430,7 +430,7 @@ CreateThread(function()
                 EndTextCommandSetBlipName(piBlip)
             end
 
-            lib.zones.poly({
+            GarageBridge.zones.poly({
                 points  = v.zones.points,
                 thickness = v.zones.thickness,
                 onEnter = function ()
@@ -439,7 +439,7 @@ CreateThread(function()
                         utils.drawtext('show', v.label:upper(), 'warehouse')
                         radFunc.create({
                             id = "open_garage_pi",
-                            label = locale("garage.open"),
+                            label = GarageBridge.locale("garage.open"),
                             icon = "warehouse",
                             event = "forge_garage:radial:open_policeimpound",
                             args = {
