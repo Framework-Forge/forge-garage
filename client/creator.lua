@@ -1789,12 +1789,132 @@ end
 
 local function teleportToStoredGarageVehicle(self)
     teleportToIplPoint(self)
-    if self.garage then
+    if self.persistent and self.garage then
         TriggerServerEvent('forge_garage:server:enterPersistentZone', self.garage)
     end
 end
 
-local function listStoredGarageVehicles(self)
+local listStoredGarageVehicles
+
+local function pullStoredGarageVehicle(self)
+    CreateThread(function()
+        local ped = GarageBridge.cache.ped
+        local position = GetOffsetFromEntityInWorldCoords(ped, 0.0, 4.0, 0.5)
+        local target = {
+            x = position.x,
+            y = position.y,
+            z = position.z,
+            w = GetEntityHeading(ped),
+        }
+
+        local response = GarageBridge.callback.await(
+            'forge_garage:cb_server:adminPullGarageVehicle',
+            false,
+            self.garage,
+            self.plate,
+            target
+        )
+
+        if not response or response.success ~= true then
+            local reason = response and response.reason or "unknown_error"
+            utils.notify("Nao foi possivel puxar o veiculo: " .. reason, "error", 8000)
+            returnToContext(self.returnMenu)
+            return
+        end
+
+        local vehicle = NetworkGetEntityFromNetworkId(response.netId or 0)
+        local expires = GetGameTimer() + 3000
+        while (not vehicle or vehicle == 0 or not DoesEntityExist(vehicle)) and GetGameTimer() < expires do
+            Wait(25)
+            vehicle = NetworkGetEntityFromNetworkId(response.netId or 0)
+        end
+
+        if vehicle and vehicle ~= 0 and DoesEntityExist(vehicle) then
+            local expectedPlate = response.displayPlate or response.plate
+            if expectedPlate then
+                SetVehicleNumberPlateText(vehicle, expectedPlate)
+                Entity(vehicle).state:set('plate', response.plate or expectedPlate, true)
+                CreateThread(function()
+                    for _ = 1, 8 do
+                        Wait(100)
+                        if not DoesEntityExist(vehicle) then return end
+                        SetVehicleNumberPlateText(vehicle, expectedPlate)
+                    end
+                end)
+            end
+            SetVehicleOnGroundProperly(vehicle)
+        end
+
+        utils.notify(
+            response.reused and "Veiculo persistente retirado do bucket." or "Veiculo retirado da garagem.",
+            "success"
+        )
+
+        listStoredGarageVehicles({
+            k = self.garage,
+            v = self.garageData,
+            parentMenu = self.parentMenu,
+            label = self.listLabel,
+        })
+    end)
+end
+
+local function openStoredGarageVehicleActions(self)
+    local vehicle = self.vehicle
+    local contextId = ("rhd:stored_vehicle_%s_%s"):format(
+        tostring(self.garage):gsub("[^%w]", "_"),
+        tostring(vehicle.plate or "unknown"):gsub("[^%w]", "_")
+    )
+    local coords = vehicle.coords
+    local teleportCoords = coords and vec4(
+        tonumber(coords.x) or 0.0,
+        tonumber(coords.y) or 0.0,
+        tonumber(coords.z) or 0.0,
+        tonumber(coords.w or coords.h) or 0.0
+    ) or nil
+    local ipl = self.garageData and self.garageData.ipl
+    local isIpl = ipl and ipl.enabled
+
+    utils.createMenu({
+        id = contextId,
+        title = vehicle.label or vehicle.vehicle or vehicle.plate or "Veiculo",
+        menu = self.returnMenu,
+        options = {
+            {
+                title = "Teleportar ate o veiculo",
+                icon = "location-dot",
+                description = teleportCoords and "Vai ate a posicao salva ou renderizada." or "Este veiculo nao possui posicao salva.",
+                disabled = teleportCoords == nil,
+                onSelect = teleportToStoredGarageVehicle,
+                args = {
+                    garage = self.garage,
+                    persistent = self.garageData and self.garageData.persist == true,
+                    coords = teleportCoords,
+                    bucket = isIpl and (ipl.bucket or 0) or 0,
+                    ipl = isIpl and ipl.model or nil,
+                    unloadIpl = not isIpl,
+                    returnMenu = contextId,
+                },
+            },
+            {
+                title = "Puxar veiculo",
+                icon = "truck-ramp-box",
+                description = "Remove da garagem, reutiliza a entidade existente e coloca na sua frente.",
+                onSelect = pullStoredGarageVehicle,
+                args = {
+                    garage = self.garage,
+                    garageData = self.garageData,
+                    plate = vehicle.plate,
+                    returnMenu = contextId,
+                    parentMenu = self.parentMenu,
+                    listLabel = self.listLabel,
+                },
+            },
+        },
+    })
+end
+
+listStoredGarageVehicles = function(self)
     CreateThread(function()
         local response = GarageBridge.callback.await(
             'forge_garage:cb_server:getPersistentGarageVehicles',
@@ -1811,30 +1931,25 @@ local function listStoredGarageVehicles(self)
         local contextId = "rhd:stored_vehicles_" .. self.k
         local vehicles = response.vehicles or {}
         local options = {}
-        local ipl = self.v and self.v.ipl
-        local isIpl = ipl and ipl.enabled
 
         if #vehicles == 0 then
             options[1] = {
                 title = "Nenhum veiculo estacionado",
                 icon = "circle-info",
-                description = "Banco de dados sem veiculos persistentes nesta garagem.",
+                description = "Banco de dados sem veiculos guardados nesta garagem.",
                 disabled = true,
             }
         end
 
         for i = 1, #vehicles do
             local vehicle = vehicles[i]
-            local coords = vehicle.coords
-            local teleportCoords = coords and vec4(
-                tonumber(coords.x) or 0.0,
-                tonumber(coords.y) or 0.0,
-                tonumber(coords.z) or 0.0,
-                tonumber(coords.w or coords.h) or 0.0
-            ) or nil
-            local status = vehicle.rendered and "Renderizado"
+            local databaseStatus = vehicle.state == 1 and "Guardado"
+                or vehicle.state == 2 and "Apreendido"
+                or "Fora da garagem"
+            local runtimeStatus = vehicle.rendered and "Renderizado"
                 or vehicle.spawned and "Entidade em bucket privado"
                 or "Somente no banco"
+            local status = databaseStatus .. " | " .. runtimeStatus
             local runtime = vehicle.spawned
                 and (" | NetID: %s | Bucket: %s/%s"):format(
                     vehicle.netId or "?",
@@ -1847,41 +1962,45 @@ local function listStoredGarageVehicles(self)
                 title = vehicle.label or vehicle.vehicle or ("Veiculo " .. i),
                 icon = vehicle.rendered and "car" or vehicle.spawned and "archive" or "database",
                 description = ("Placa: %s | %s%s"):format(vehicle.plate or "?", status, runtime),
-                disabled = teleportCoords == nil,
-                onSelect = teleportToStoredGarageVehicle,
+                onSelect = openStoredGarageVehicleActions,
                 args = {
                     garage = self.k,
-                    coords = teleportCoords,
-                    bucket = isIpl and (ipl.bucket or 0) or 0,
-                    ipl = isIpl and ipl.model or nil,
-                    unloadIpl = not isIpl,
+                    garageData = self.v,
+                    vehicle = vehicle,
                     returnMenu = contextId,
+                    parentMenu = self.parentMenu,
+                    listLabel = self.label,
                 },
             }
         end
 
         utils.createMenu({
             id = contextId,
-            title = ("Veiculos Estacionados: %s (%s)"):format(self.k, #vehicles),
+            title = ("Veiculos: %s (%s)"):format(self.label or self.k, #vehicles),
             menu = self.parentMenu,
             options = options,
         })
     end)
 end
-
 local function openGarageVehicleMenu(self)
     local contextId = "rhd:garage_vehicles_" .. self.k
     local options = {}
 
-    if self.v.persist then
-        options[#options + 1] = {
-            title = "Veiculos Estacionados",
-            icon = "list",
-            description = "Lista banco, estado renderizado e teleporte por veiculo.",
-            onSelect = listStoredGarageVehicles,
-            args = { k = self.k, v = self.v, parentMenu = contextId },
-        }
-    end
+    options[#options + 1] = {
+        title = "Veiculos da Garagem",
+        icon = "list",
+        description = "Lista todos os registros associados a esta garagem.",
+        onSelect = listStoredGarageVehicles,
+        args = { k = self.k, v = self.v, label = self.k, parentMenu = contextId },
+    }
+
+    options[#options + 1] = {
+        title = "Veiculos fora de garagem",
+        icon = "car-side",
+        description = "Lista veiculos marcados como fora e permite puxa-los.",
+        onSelect = listStoredGarageVehicles,
+        args = { k = "__outside__", label = "Fora de Garagem", parentMenu = contextId },
+    }
 
     options[#options + 1] = {
         title = self.isIpl and "Vagas IPL" or "Locais de Spawn",

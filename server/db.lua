@@ -162,6 +162,10 @@ end
 
 --- Update Vehicle State
 function GarageDB.uvs(plate, state, garage, parking_coords)
+    if state ~= 1 and garage == nil then
+        return GarageDB.setVehicleOutside(plate)
+    end
+
     if state ~= 1 then
         parking_coords = nil
     end
@@ -174,6 +178,19 @@ function GarageDB.uvs(plate, state, garage, parking_coords)
             OR REPLACE(UPPER(fakeplate), ' ', '') = ?
     ]], {state, garage, parking_coords, plate, plate, normalizedPlate, normalizedPlate})
     return Update > 0
+end
+
+--- Mark Vehicle Outside And Clear Its Garage Assignment
+function GarageDB.setVehicleOutside(plate)
+    local normalizedPlate = normalizePlate(plate)
+    local update = MySQL.update.await([[
+        UPDATE player_vehicles
+        SET state = 0, garage = NULL, parking_coords = NULL
+        WHERE plate = ? OR fakeplate = ?
+            OR REPLACE(UPPER(plate), ' ', '') = ?
+            OR REPLACE(UPPER(fakeplate), ' ', '') = ?
+    ]], { plate, plate, normalizedPlate, normalizedPlate })
+    return update ~= nil
 end
 
 --- Update Vehicle State Police Impound
@@ -375,12 +392,37 @@ function GarageDB.uvoByCitizenId(oldOwnerId, newCitizenId, plate)
     return false, "db_error"
 end
 
---- Get Persistent Vehicles In Garage
+--- Get Vehicles That Must Be Rendered Persistently
 function GarageDB.getPersistentVehicles(garageName)
     local results = MySQL.query.await([[
         SELECT plate, vehicle, vehicle_name, mods, deformation, fuel, engine, body, parking_coords
         FROM player_vehicles
         WHERE garage = ? AND state = 1 AND parking_coords IS NOT NULL
-    ]], {garageName})
+    ]], { garageName })
+    return results or {}
+end
+
+--- Get Vehicles For The Administrative Management Menu
+function GarageDB.getManagementVehicles(garageName, outsideOnly)
+    local query
+    local params
+
+    if outsideOnly then
+        query = [[
+            SELECT plate, fakeplate, vehicle, vehicle_name, mods, deformation, fuel, engine, body, parking_coords, garage, state
+            FROM player_vehicles
+            WHERE state = 0 OR garage IS NULL OR TRIM(garage) = ''
+        ]]
+        params = {}
+    else
+        query = [[
+            SELECT plate, fakeplate, vehicle, vehicle_name, mods, deformation, fuel, engine, body, parking_coords, garage, state
+            FROM player_vehicles
+            WHERE garage = ?
+        ]]
+        params = { garageName }
+    end
+
+    local results = MySQL.query.await(query, params)
     return results or {}
 end

@@ -44,15 +44,15 @@ local isSpawning = false
 --- Spawn Vehicle
 ---@param data GarageVehicleData
 local function spawnvehicle(data)
-    LocalPlayer.state:set('garageBusy', true)
     if isSpawning then
         utils.notify('Aguarde enquanto o veículo está sendo spawnado.', 'error')
         return
     end
+    LocalPlayer.state:set('garageBusy', true)
 
-    -- If the vehicle is already physically spawned/stored as persistent or in bucket, retrieve it!
-    local persistentVeh = exports['forge-garage']:getPersistentVehicleEntity(data.plate)
-    if persistentVeh and DoesEntityExist(persistentVeh) then
+    -- The server owns the persistent entity registry. A vehicle in another
+    -- routing bucket is intentionally invisible to this client.
+    if data.plate and data.garage then
         local callbackData = GarageBridge.callback.await('forge_garage:cb_server:pullVehicleFromBucket', false, data.plate, data.coords or GetEntityCoords(GarageBridge.cache.ped), data.garage)
         
         if callbackData and callbackData.success then
@@ -67,36 +67,40 @@ local function spawnvehicle(data)
             end
             
             if DoesEntityExist(vehEntity) then
-                FreezeEntityPosition(vehEntity, true)
-                SetVehicleDoorsLocked(vehEntity, 2) -- Locked
-                Entity(vehEntity).state:set("doorslockstate", 2, true)
-                SetVehicleEngineOn(vehEntity, false, true, true)
-                SetVehicleHandbrake(vehEntity, true)
-                
-                -- Force lock status multiple times to override any network sync delay
-                CreateThread(function()
-                    local timeout = 0
-                    while timeout < 20 do
-                        if DoesEntityExist(vehEntity) then
-                            SetVehicleDoorsLocked(vehEntity, 2)
-                            Entity(vehEntity).state:set("doorslockstate", 2, true)
+                local expectedPlate = callbackData.displayPlate or callbackData.plate or data.plate
+                if expectedPlate then
+                    SetVehicleNumberPlateText(vehEntity, expectedPlate)
+                    CreateThread(function()
+                        for _ = 1, 8 do
+                            Wait(100)
+                            if not DoesEntityExist(vehEntity) then return end
+                            SetVehicleNumberPlateText(vehEntity, expectedPlate)
                         end
-                        Wait(100)
-                        timeout = timeout + 1
-                    end
-                end)
-                
+                    end)
+                end
+                FreezeEntityPosition(vehEntity, false)
+                SetVehicleHandbrake(vehEntity, false)
+                SetVehicleUndriveable(vehEntity, false)
+                SetVehicleDoorsLocked(vehEntity, 1)
+                Entity(vehEntity).state:set("doorslockstate", 1, true)
+                SetVehicleEngineOn(vehEntity, false, true, true)
+
                 local state = Entity(vehEntity).state
-                state:set('isPersistent', true, true)
-                state:set('plate', data.plate, true)
-                state:set('garageName', data.garage, true)
-                
+                state:set('isPersistent', nil, true)
+                state:set('plate', callbackData.plate or data.plate, true)
+                state:set('garageName', nil, true)
+                state:set('pr_carkeys_skipRevPed', nil, true)
+
+                exports['forge-garage']:unregisterStoredPersistentVehicle(data.plate)
+
                 if Config.SpawnInVehicle then
                     TaskWarpPedIntoVehicle(GarageBridge.cache.ped, vehEntity, -1)
                 end
-                
-                exports['forge-garage']:registerStoredPersistentVehicle(data.plate, netId, vehEntity)
-                
+
+                if Config.GiveKeys.tempkeys then
+                    TriggerEvent("vehiclekeys:client:SetOwner", data.plate:trim())
+                end
+
                 utils.notify("Você liberou seu veículo estacionado!", "success")
                 LocalPlayer.state:set('garageBusy', false)
                 return
@@ -126,8 +130,14 @@ local function spawnvehicle(data)
             print(json.encode(data))
         end
         
+        local spawnProps = type(vehData.mods) == "table" and vehData.mods or {}
+        local expectedPlate = spawnProps.plate or vehData.fakeplate or vehData.plate or data.plate
+        if expectedPlate then
+            spawnProps.plate = expectedPlate
+        end
+
         local vehEntity
-        utils.createPlyVeh(vehData.model, data.coords, function(veh) vehEntity = veh end, true, vehData.mods)
+        utils.createPlyVeh(vehData.model, data.coords, function(veh) vehEntity = veh end, true, spawnProps)
         
         local timeout = 0
         while (not vehEntity or vehEntity == 0 or not DoesEntityExist(vehEntity)) and timeout < 100 do
@@ -136,6 +146,9 @@ local function spawnvehicle(data)
         end
 
         if vehEntity and vehEntity ~= 0 and DoesEntityExist(vehEntity) then
+            if expectedPlate then
+                SetVehicleNumberPlateText(vehEntity, expectedPlate)
+            end
             SetVehicleOnGroundProperly(vehEntity)
             FreezeEntityPosition(vehEntity, true) -- Frozen
             SetVehicleDoorsLocked(vehEntity, 2) -- Locked

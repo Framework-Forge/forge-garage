@@ -54,6 +54,19 @@ local function normalizePlate(plate)
     return tostring(plate):gsub("%s+", ""):upper()
 end
 
+local function enforceVehiclePlate(vehicle, plate)
+    if not vehicle or vehicle == 0 or not plate or not DoesEntityExist(vehicle) then return end
+
+    SetVehicleNumberPlateText(vehicle, tostring(plate))
+    CreateThread(function()
+        for _ = 1, 8 do
+            Wait(100)
+            if not DoesEntityExist(vehicle) then return end
+            SetVehicleNumberPlateText(vehicle, tostring(plate))
+        end
+    end)
+end
+
 local function setPersistentUnlocked(plate, value)
     local key = normalizePlate(plate)
     if not key then return end
@@ -597,6 +610,8 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
             if isRevvingVehicle(data.plate, existingVeh, NetworkGetNetworkIdFromEntity(existingVeh)) then
                 goto continue
             end
+            enforceVehiclePlate(existingVeh, data.plate)
+            Entity(existingVeh).state:set('plate', data.plate, true)
             Entity(existingVeh).state:set('pr_carkeys_skipRevPed', true, true)
             -- Map it in local arrays and register in shared cache
             spawnedPlates[data.plate] = existingVeh
@@ -654,6 +669,7 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
                                 GarageBridge.setVehicleProperties(veh, mods)
                             end)
                         end
+                        enforceVehiclePlate(veh, data.plate)
 
                         if data.fuel then
                             SetVehicleFuelLevel(veh, tonumber(data.fuel) + 0.0)

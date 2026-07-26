@@ -252,6 +252,9 @@ if isServer then
         local netId = NetworkGetNetworkIdFromEntity(vehicle)
         if type(properties) == "table" then
             pr_lib.vehicleProperties.set(vehicle, properties)
+            if properties.plate then
+                pcall(SetVehicleNumberPlateText, vehicle, tostring(properties.plate))
+            end
         end
 
         return netId, vehicle

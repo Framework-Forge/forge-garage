@@ -101,6 +101,47 @@ local function getTrackedPersistentVehicle(garageName, plate)
         end
     end
 
+    -- Entity tables are rebuilt after a resource restart. Recover orphaned
+    -- persistent vehicles from their replicated state instead of spawning a copy.
+    local vehicles = GetAllVehicles()
+    for i = 1, #vehicles do
+        local entity = vehicles[i]
+        if entity and DoesEntityExist(entity) then
+            local state = Entity(entity).state
+            local statePlate = state.plate
+            local stateGarage = state.garageName
+            if state.isPersistent == true
+                and normalizePlate(statePlate) == plateKey
+                and (not garageName or not stateGarage or stateGarage == garageName) then
+                return entity, NetworkGetNetworkIdFromEntity(entity), statePlate
+            end
+        end
+    end
+
+    return nil
+end
+
+local function getWorldVehicleByPlate(plate)
+    local plateKey = normalizePlate(plate)
+    if not plateKey then return nil end
+
+    local vehicles = GetAllVehicles()
+    for i = 1, #vehicles do
+        local entity = vehicles[i]
+        if entity and DoesEntityExist(entity) then
+            local statePlate = Entity(entity).state.plate
+            local nativePlate
+            if not statePlate then
+                local ok, value = pcall(GetVehicleNumberPlateText, entity)
+                nativePlate = ok and value or nil
+            end
+
+            if normalizePlate(statePlate or nativePlate) == plateKey then
+                return entity, NetworkGetNetworkIdFromEntity(entity)
+            end
+        end
+    end
+
     return nil
 end
 
@@ -174,31 +215,45 @@ end)
 
 GarageBridge.callback.register('forge_garage:cb_server:pullVehicleFromBucket', function(source, plate, coords, garageName)
     local src = source
-    local entity, netId = getTrackedPersistentVehicle(garageName, plate)
-    
+    local vehicleData = GarageDB.gpvbp(plate)
+    local trackedGarage = vehicleData and vehicleData.garage or garageName
+    local entity, netId = getTrackedPersistentVehicle(trackedGarage, plate)
+
+    if not vehicleData or tonumber(vehicleData.state) ~= 1 then
+        return { success = false, reason = "vehicle_not_stored" }
+    end
+
     if entity and DoesEntityExist(entity) then
+        local displayPlate = vehicleData.fakeplate or vehicleData.plate
+        if not GarageDB.uvs(vehicleData.plate, 0, trackedGarage, nil) then
+            return { success = false, reason = "database_update_failed" }
+        end
+
         local playerPed = GetPlayerPed(src)
         local playerBucket = GetEntityRoutingBucket(playerPed)
-        
-        -- Move back to player's routing bucket
+
+        pcall(SetVehicleNumberPlateText, entity, displayPlate)
         SetEntityRoutingBucket(entity, playerBucket)
-        
-        -- Lock the vehicle using pr_carkeys
+
         if GetResourceState('pr_carkeys') == 'started' then
-            exports['pr_carkeys']:SetLockState(entity, 2)
+            exports['pr_carkeys']:SetLockState(entity, 1)
         end
-        
-        -- Teleport to target coordinates
+
         SetEntityCoords(entity, coords.x, coords.y, coords.z, false, false, false, true)
         SetEntityHeading(entity, coords.w or coords.h or 0.0)
         FreezeEntityPosition(entity, false)
-        
-        removeTrackedPersistentVehicle(garageName, plate, netId)
+
+        local state = Entity(entity).state
+        state:set('isPersistent', false, true)
+        state:set('garageName', nil, true)
+
+        removeTrackedPersistentVehicle(trackedGarage, vehicleData.plate, netId)
         netId = NetworkGetNetworkIdFromEntity(entity)
-        return { success = true, netId = netId }
+        TriggerClientEvent('forge_garage:client:detachPersistentVehicle', -1, vehicleData.plate, netId)
+        return { success = true, netId = netId, plate = vehicleData.plate, displayPlate = displayPlate }
     end
-    
-    return { success = false }
+
+    return { success = false, reason = "persistent_entity_not_found" }
 end)
 
 GarageBridge.callback.register('forge_garage:cb_server:getvehowner', function (src, plate, shared, pleaseUpdate)
@@ -344,11 +399,13 @@ GarageBridge.callback.register('forge_garage:cb_server:getPersistentGarageVehicl
     if not hasGarageAdminAccess(source) then
         return { allowed = false, vehicles = {} }
     end
-    if type(garageName) ~= "string" or not GarageZone or not GarageZone[garageName] then
+
+    local outsideOnly = garageName == "__outside__"
+    if not outsideOnly and (type(garageName) ~= "string" or not GarageZone or not GarageZone[garageName]) then
         return { allowed = true, vehicles = {} }
     end
 
-    local rows = GarageDB.getPersistentVehicles(garageName)
+    local rows = GarageDB.getManagementVehicles(garageName, outsideOnly)
     local vehicles = {}
 
     for i = 1, #rows do
@@ -359,11 +416,18 @@ GarageBridge.callback.register('forge_garage:cb_server:getPersistentGarageVehicl
             coords = ok and decoded or nil
         end
 
-        local entity, netId = getTrackedPersistentVehicle(garageName, row.plate)
+        local rowGarage = row.garage
+        local entity, netId = getTrackedPersistentVehicle(rowGarage, row.plate)
+        if not entity or not DoesEntityExist(entity) then
+            entity, netId = getWorldVehicleByPlate(row.plate)
+        end
+
         local spawned = entity and DoesEntityExist(entity) or false
         local entityBucket = spawned and GetEntityRoutingBucket(entity) or nil
-        local garageData = GarageZone[garageName]
-        local expectedBucket = garageData.ipl and garageData.ipl.enabled and (garageData.ipl.bucket or 0) or 0
+        local garageData = rowGarage and GarageZone and GarageZone[rowGarage] or nil
+        local expectedBucket = garageData and garageData.ipl and garageData.ipl.enabled
+            and (garageData.ipl.bucket or 0)
+            or 0
         local rendered = spawned and entityBucket == expectedBucket
 
         if spawned then
@@ -378,8 +442,11 @@ GarageBridge.callback.register('forge_garage:cb_server:getPersistentGarageVehicl
 
         vehicles[#vehicles + 1] = {
             plate = row.plate,
+            fakeplate = row.fakeplate,
             vehicle = row.vehicle,
             label = row.vehicle_name,
+            garage = rowGarage,
+            state = tonumber(row.state) or 0,
             coords = coords,
             spawned = spawned == true,
             rendered = rendered == true,
@@ -393,7 +460,96 @@ GarageBridge.callback.register('forge_garage:cb_server:getPersistentGarageVehicl
         return tostring(a.plate or "") < tostring(b.plate or "")
     end)
 
-    return { allowed = true, vehicles = vehicles }
+    return { allowed = true, vehicles = vehicles, outside = outsideOnly }
+end)
+GarageBridge.callback.register('forge_garage:cb_server:adminPullGarageVehicle', function(source, garageName, plate, coords)
+    if not hasGarageAdminAccess(source) then
+        return { success = false, reason = "permission_denied" }
+    end
+    if type(garageName) ~= "string" or type(plate) ~= "string" or type(coords) ~= "table" then
+        return { success = false, reason = "invalid_request" }
+    end
+
+    local x, y, z = tonumber(coords.x), tonumber(coords.y), tonumber(coords.z)
+    local heading = tonumber(coords.w or coords.h) or 0.0
+    if not x or not y or not z then
+        return { success = false, reason = "invalid_coords" }
+    end
+
+    local playerPed = GetPlayerPed(source)
+    if not playerPed or playerPed == 0 then
+        return { success = false, reason = "player_not_found" }
+    end
+
+    local playerCoords = GetEntityCoords(playerPed)
+    local dx, dy, dz = x - playerCoords.x, y - playerCoords.y, z - playerCoords.z
+    if (dx * dx + dy * dy + dz * dz) > 225.0 then
+        return { success = false, reason = "coords_too_far" }
+    end
+
+    local vehicleData = GarageDB.gpvbp(plate)
+    local outsideOnly = garageName == "__outside__"
+    local vehicleState = vehicleData and tonumber(vehicleData.state) or nil
+    local vehicleGarage = vehicleData and vehicleData.garage or nil
+    local hasNoGarage = vehicleGarage == nil or tostring(vehicleGarage):match("^%s*$") ~= nil
+    if not vehicleData
+        or (outsideOnly and vehicleState ~= 0 and not hasNoGarage)
+        or (not outsideOnly and vehicleGarage ~= garageName) then
+        return { success = false, reason = "vehicle_not_available" }
+    end
+
+    local actualGarage = vehicleData.garage
+    local entity, netId = getTrackedPersistentVehicle(actualGarage, vehicleData.plate)
+    if not entity or not DoesEntityExist(entity) then
+        entity, netId = getWorldVehicleByPlate(vehicleData.plate)
+    end
+
+    local reused = entity and DoesEntityExist(entity) or false
+    local targetCoords = { x = x, y = y, z = z, w = heading }
+    local displayPlate = vehicleData.fakeplate or vehicleData.plate
+
+    if not reused then
+        local props = type(vehicleData.mods) == "table" and vehicleData.mods or {}
+        props.plate = displayPlate
+        netId, entity = GarageBridge.spawnVehicle(vehicleData.model, targetCoords, props)
+        if not netId or not entity or not DoesEntityExist(entity) then
+            return { success = false, reason = "spawn_failed" }
+        end
+    end
+
+    if not GarageDB.setVehicleOutside(vehicleData.plate) then
+        if not reused and entity and DoesEntityExist(entity) then DeleteEntity(entity) end
+        return { success = false, reason = "database_update_failed" }
+    end
+
+    pcall(SetVehicleNumberPlateText, entity, displayPlate)
+    SetEntityRoutingBucket(entity, GetEntityRoutingBucket(playerPed))
+    SetEntityCoords(entity, x, y, z, false, false, false, true)
+    SetEntityHeading(entity, heading)
+    FreezeEntityPosition(entity, false)
+
+    local state = Entity(entity).state
+    state:set('isPersistent', false, true)
+    state:set('plate', vehicleData.plate, true)
+    state:set('garageName', nil, true)
+
+    removeTrackedPersistentVehicle(actualGarage, vehicleData.plate, netId)
+    TriggerClientEvent('forge_garage:client:detachPersistentVehicle', -1, vehicleData.plate, netId)
+
+    if GetResourceState('pr_carkeys') == 'started' then
+        exports['pr_carkeys']:SetLockState(entity, 1)
+        if Config.GiveKeys.tempkeys then
+            exports['pr_carkeys']:GiveKeys(source, vehicleData.plate)
+        end
+    end
+
+    return {
+        success = true,
+        netId = NetworkGetNetworkIdFromEntity(entity),
+        plate = vehicleData.plate,
+        displayPlate = displayPlate,
+        reused = reused,
+    }
 end)
 
 --- Event
@@ -970,8 +1126,8 @@ GarageBridge.callback.register('forge_garage:cb_server:hasKeyForPlate', function
         local ok, hasAccess = pcall(function()
             return exports['pr_carkeys']:HasVehicleAccess(src, targetPlate)
         end)
-        if ok then
-            return hasAccess == true
+        if ok and hasAccess == true then
+            return true
         end
     end
 
