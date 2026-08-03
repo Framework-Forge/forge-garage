@@ -618,6 +618,248 @@ RegisterNetEvent("forge_garage:server:saveGarageZone", function(fileData)
     return storage.SaveGarage(fileData)
 end)
 
+local propertyGarageCooldown = {}
+local propertyGarageVehicleTypes = {
+    car = true,
+    motorcycle = true,
+    cycles = true,
+    boat = true,
+    helicopter = true,
+    planes = true,
+}
+
+local function trimPropertyGarageString(value, maxLength)
+    if type(value) ~= "string" then return nil end
+    value = value:gsub("[%z\1-\31\127]", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if value == "" or #value > maxLength then return nil end
+    return value
+end
+
+local function propertyGarageAccess(source)
+    local config = Config.PropertyGarageCreator or {}
+    if config.enabled == false then
+        return false, "Criacao de garagens imobiliarias esta desativada."
+    end
+
+    if type(config.ace) == "string" and config.ace ~= "" and IsPlayerAceAllowed(source, config.ace) then
+        return true
+    end
+
+    local player = pr_lib.framework.GetPlayer(source)
+    local playerData = player and (player.PlayerData or player)
+    local job = playerData and playerData.job
+    local jobName = type(job) == "table" and job.name or job
+    local grade = type(job) == "table" and job.grade or 0
+    if type(grade) == "table" then grade = grade.level or grade.grade or 0 end
+    grade = tonumber(grade) or 0
+
+    local minimumGrade = config.jobs and config.jobs[jobName]
+    if minimumGrade ~= nil and grade >= (tonumber(minimumGrade) or 0) then
+        return true
+    end
+
+    return false, "Apenas corretores imobiliarios autorizados podem criar esta garagem."
+end
+
+local function findPropertyGarage(propertyId)
+    for garageName, garage in pairs(GarageZone or {}) do
+        local property = type(garage) == "table" and garage.propertyGarage
+        if type(property) == "table" and tostring(property.id) == propertyId then
+            return garageName
+        end
+    end
+end
+
+local function finitePropertyGarageNumber(value, minimum, maximum)
+    value = tonumber(value)
+    if not value or value ~= value or value < minimum or value > maximum then return nil end
+    return value
+end
+
+local function sanitizePropertyGarageVector(value, includeHeading)
+    local valueType = type(value)
+    if valueType ~= "table" and valueType ~= "vector3" and valueType ~= "vector4" then return nil end
+    local x = finitePropertyGarageNumber(value.x or value[1], -10000.0, 10000.0)
+    local y = finitePropertyGarageNumber(value.y or value[2], -10000.0, 10000.0)
+    local z = finitePropertyGarageNumber(value.z or value[3], -1000.0, 3000.0)
+    if not x or not y or not z then return nil end
+
+    local result = { x = x, y = y, z = z }
+    if includeHeading then
+        local heading = finitePropertyGarageNumber(value.w or value[4] or 0.0, -360.0, 720.0)
+        if not heading then return nil end
+        result.w = heading % 360.0
+    end
+    return result
+end
+
+local function sanitizePropertyGarage(payload)
+    if type(payload) ~= "table" or type(payload.garage) ~= "table" then
+        return nil, "Dados da garagem invalidos."
+    end
+
+    local config = Config.PropertyGarageCreator or {}
+    local propertyId = trimPropertyGarageString(tostring(payload.propertyId or ""), 80)
+    local label = trimPropertyGarageString(payload.label, 80)
+    if not propertyId then return nil, "propertyId invalido." end
+    if not label then return nil, "Nome da garagem invalido." end
+
+    local inputGarage = payload.garage
+    local vehicleTypes = {}
+    local seenTypes = {}
+    if type(inputGarage.type) ~= "table" then return nil, "Selecione ao menos um tipo de veiculo." end
+    for index = 1, #inputGarage.type do
+        local vehicleType = inputGarage.type[index]
+        if propertyGarageVehicleTypes[vehicleType] and not seenTypes[vehicleType] then
+            seenTypes[vehicleType] = true
+            vehicleTypes[#vehicleTypes + 1] = vehicleType
+        end
+    end
+    if #vehicleTypes == 0 then return nil, "Nenhum tipo de veiculo valido foi selecionado." end
+
+    local zones = inputGarage.zones
+    local inputPoints = type(zones) == "table" and zones.points
+    local maxZonePoints = tonumber(config.maxZonePoints) or 32
+    if type(inputPoints) ~= "table" or #inputPoints < 3 or #inputPoints > maxZonePoints then
+        return nil, ("A PolyZone deve possuir entre 3 e %d pontos."):format(maxZonePoints)
+    end
+
+    local zonePoints = {}
+    for index = 1, #inputPoints do
+        local point = sanitizePropertyGarageVector(inputPoints[index], false)
+        if not point then return nil, ("Ponto %d da PolyZone e invalido."):format(index) end
+        zonePoints[index] = point
+    end
+
+    local thickness = finitePropertyGarageNumber(zones.thickness or 4.0, 1.0, 20.0)
+    if not thickness then return nil, "Altura da PolyZone invalida." end
+
+    local spawnPoints = {}
+    local spawnModels = {}
+    local inputSpawnPoints = inputGarage.spawnPoint
+    local inputSpawnModels = inputGarage.spawnPointVehicle
+    local maxSpawnPoints = tonumber(config.maxSpawnPoints) or 64
+    if inputSpawnPoints ~= nil then
+        if type(inputSpawnPoints) ~= "table" or #inputSpawnPoints > maxSpawnPoints then
+            return nil, ("A garagem aceita no maximo %d vagas."):format(maxSpawnPoints)
+        end
+        for index = 1, #inputSpawnPoints do
+            local point = sanitizePropertyGarageVector(inputSpawnPoints[index], true)
+            local model = type(inputSpawnModels) == "table" and trimPropertyGarageString(inputSpawnModels[index], 64)
+            if not point or not model or not model:match("^[%w_-]+$") then
+                return nil, ("Vaga %d e invalida."):format(index)
+            end
+            spawnPoints[index] = point
+            spawnModels[index] = model
+        end
+    end
+
+    local persist = inputGarage.persist == true
+    local interaction = inputGarage.interaction
+    if not persist and interaction ~= "radial" and interaction ~= "keypressed" then
+        interaction = "keypressed"
+    elseif persist then
+        interaction = nil
+    end
+
+    return {
+        propertyId = propertyId,
+        label = label,
+        invokingResource = trimPropertyGarageString(tostring(payload.invokingResource or "unknown"), 64) or "unknown",
+        garage = {
+            type = vehicleTypes,
+            zones = {
+                points = zonePoints,
+                thickness = thickness,
+            },
+            impound = false,
+            shared = false,
+            persist = persist,
+            spawnPoint = #spawnPoints > 0 and spawnPoints or nil,
+            spawnPointVehicle = #spawnModels > 0 and spawnModels or nil,
+            interaction = interaction,
+        },
+    }
+end
+
+GarageBridge.callback.register("forge_garage:cb_server:canCreatePropertyGarage", function(source, propertyId)
+    local allowed, reason = propertyGarageAccess(source)
+    if not allowed then return { success = false, code = "forbidden", message = reason } end
+
+    propertyId = trimPropertyGarageString(tostring(propertyId or ""), 80)
+    if not propertyId then
+        return { success = false, code = "invalid_property_id", message = "propertyId invalido." }
+    end
+
+    local existingGarage = findPropertyGarage(propertyId)
+    if existingGarage then
+        return {
+            success = false,
+            code = "property_garage_exists",
+            message = ("O imovel ja possui a garagem %s."):format(existingGarage),
+            garage = existingGarage,
+        }
+    end
+
+    return { success = true }
+end)
+
+GarageBridge.callback.register("forge_garage:cb_server:createPropertyGarage", function(source, payload)
+    local allowed, reason = propertyGarageAccess(source)
+    if not allowed then return { success = false, code = "forbidden", message = reason } end
+
+    local now = GetGameTimer()
+    local cooldown = tonumber((Config.PropertyGarageCreator or {}).cooldown) or 5000
+    if propertyGarageCooldown[source] and propertyGarageCooldown[source] > now then
+        return { success = false, code = "cooldown", message = "Aguarde antes de criar outra garagem." }
+    end
+
+    local sanitized, validationError = sanitizePropertyGarage(payload)
+    if not sanitized then
+        return { success = false, code = "invalid_data", message = validationError }
+    end
+
+    if GarageZone[sanitized.label] then
+        return { success = false, code = "garage_name_exists", message = "Ja existe uma garagem com esse nome." }
+    end
+
+    local existingGarage = findPropertyGarage(sanitized.propertyId)
+    if existingGarage then
+        return {
+            success = false,
+            code = "property_garage_exists",
+            message = ("O imovel ja possui a garagem %s."):format(existingGarage),
+            garage = existingGarage,
+        }
+    end
+
+    local player = pr_lib.framework.GetPlayer(source)
+    local playerData = player and (player.PlayerData or player) or {}
+    sanitized.garage.propertyGarage = {
+        id = sanitized.propertyId,
+        public = true,
+        createdBy = tostring(playerData.citizenid or playerData.identifier or source),
+        createdAt = os.time(),
+        resource = sanitized.invokingResource,
+    }
+
+    GarageZone[sanitized.label] = sanitized.garage
+    propertyGarageCooldown[source] = now + cooldown
+    storage.SaveGarage(GarageZone)
+
+    return {
+        success = true,
+        code = "created",
+        message = ("Garagem publica %s criada com sucesso."):format(sanitized.label),
+        garage = sanitized.label,
+        propertyId = sanitized.propertyId,
+        public = true,
+    }
+end)
+
+AddEventHandler("playerDropped", function()
+    propertyGarageCooldown[source] = nil
+end)
 RegisterNetEvent("forge_garage:server:setPlayerGarageBucket", function(bucket)
     if GetInvokingResource() then return end
     local src = source

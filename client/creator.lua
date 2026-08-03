@@ -441,6 +441,330 @@ local function createGarageIpl()
     end
 end
 
+local propertyGarageCreatorBusy = false
+
+local propertyVehicleTypeOptions = {
+    { value = "car", label = "Carros" },
+    { value = "motorcycle", label = "Motocicletas" },
+    { value = "cycles", label = "Bicicletas" },
+    { value = "boat", label = "Barcos" },
+    { value = "helicopter", label = "Helicopteros" },
+    { value = "planes", label = "Avioes" },
+}
+
+local function finishPropertyGarageCreation(callback, result)
+    propertyGarageCreatorBusy = false
+    print(('[forge-garage][property] editor finalizado (code=%s, success=%s).'):format(tostring(result and result.code), tostring(result and result.success)))
+
+    if type(callback) == "function" then
+        local ok, callbackError = pcall(callback, result)
+        if not ok then
+            GarageBridge.print.error(("createPropertyGarage callback: %s"):format(tostring(callbackError)))
+        end
+    end
+
+    TriggerEvent("forge_garage:client:propertyGarageCreated", result)
+end
+
+local function propertyGarageResult(success, code, message, extra)
+    local result = extra or {}
+    result.success = success
+    result.code = code
+    result.message = message
+    return result
+end
+
+--- Abre o criador interativo de uma garagem publica vinculada a um imovel.
+---@param options table
+---@param callback? fun(result: table)
+---@return boolean started
+local function createPropertyGarage(options, callback)
+    if propertyGarageCreatorBusy then
+        local result = propertyGarageResult(false, "busy", "Ja existe uma garagem sendo criada.")
+        if type(callback) == "function" then callback(result) end
+        return false
+    end
+
+    if type(options) ~= "table" or options.propertyId == nil then
+        local result = propertyGarageResult(false, "invalid_options", "propertyId e obrigatorio.")
+        if type(callback) == "function" then callback(result) end
+        return false
+    end
+
+    local propertyId = tostring(options.propertyId)
+    local invokingResource = GetInvokingResource() or GetCurrentResourceName()
+    local preflight = GarageBridge.callback.await(
+        "forge_garage:cb_server:canCreatePropertyGarage",
+        false,
+        propertyId
+    )
+
+    if not preflight or not preflight.success then
+        local result = preflight or propertyGarageResult(false, "preflight_failed", "Nao foi possivel validar a criacao.")
+        utils.notify(result.message, "error", 8000)
+        if type(callback) == "function" then callback(result) end
+        return false
+    end
+
+    propertyGarageCreatorBusy = true
+
+    local defaultTypes = type(options.vehicleTypes) == "table" and options.vehicleTypes or {
+        "car",
+        "motorcycle",
+        "cycles",
+    }
+    local defaultMode = options.persist and "persistent" or "menu"
+    local defaultInteraction = options.interaction == "radial" and "radial" or "keypressed"
+    local input = pr_lib.inputDialog("Criar garagem publica", {
+        {
+            type = "input",
+            label = "Nome da garagem",
+            description = "Nome exibido no menu e salvo nos veiculos.",
+            required = true,
+            default = options.label or ("Garagem " .. propertyId),
+        },
+        {
+            type = "multi-select",
+            label = "Tipos de veiculo",
+            required = true,
+            options = propertyVehicleTypeOptions,
+            default = defaultTypes,
+        },
+        {
+            type = "select",
+            label = "Tipo de garagem",
+            required = true,
+            default = defaultMode,
+            options = {
+                { value = "menu", label = "Garagem publica com menu" },
+                { value = "persistent", label = "Garagem publica com persistencia" },
+            },
+        },
+        {
+            type = "checkbox",
+            label = "Posicionar vagas com veiculos de referencia",
+            checked = options.positionVehicles ~= false,
+        },
+        {
+            type = "select",
+            label = "Abertura da garagem com menu",
+            required = true,
+            default = defaultInteraction,
+            options = {
+                { value = "keypressed", label = "Tecla E" },
+                { value = "radial", label = "Menu radial" },
+            },
+        },
+    })
+
+    if not input then
+        finishPropertyGarageCreation(callback, propertyGarageResult(false, "cancelled", "Criacao cancelada.", {
+            cancelled = true,
+            stage = "configuration",
+        }))
+        return false
+    end
+
+    local label = input[1]
+    local vehicleTypes = input[2]
+    local persist = input[3] == "persistent"
+    local positionVehicles = input[4] == true
+    local interaction = persist and nil or input[5]
+    local wallHeight = math.max(1.0, math.min(20.0, tonumber(options.wallHeight) or 4.0))
+
+    local started = pr_lib.devtools.drawPolyzone3D({
+        minPoints = 3,
+        wallHeight = wallHeight,
+        freezePlayer = true,
+    }, function(points)
+        local zone = buildGarageZone(points)
+        if not zone then
+            finishPropertyGarageCreation(callback, propertyGarageResult(false, "cancelled", "Demarcacao cancelada.", {
+                cancelled = true,
+                stage = "polyzone",
+            }))
+            return
+        end
+
+        zone.thickness = wallHeight
+
+        local spots = nil
+        if positionVehicles then
+            spots = spawnPoint.create(zone, true, nil, vehicleTypes)
+            if not spots then
+                finishPropertyGarageCreation(callback, propertyGarageResult(false, "cancelled", "Posicionamento das vagas cancelado.", {
+                    cancelled = true,
+                    stage = "spawn_points",
+                }))
+                return
+            end
+        end
+
+        local garage = {
+            type = vehicleTypes,
+            zones = zone,
+            impound = false,
+            shared = false,
+            persist = persist,
+            spawnPoint = spots and spots.c or nil,
+            spawnPointVehicle = spots and spots.v or nil,
+            interaction = interaction,
+        }
+
+        if options.deferSave == true then
+            finishPropertyGarageCreation(callback, propertyGarageResult(true, "prepared", "Garagem configurada; finalize o cadastro do imovel para salvar.", {
+                deferred = true,
+                draft = {
+                    label = label,
+                    garage = garage,
+                },
+            }))
+            return
+        end
+
+        local response = GarageBridge.callback.await(
+            "forge_garage:cb_server:createPropertyGarage",
+            false,
+            {
+                propertyId = propertyId,
+                label = label,
+                invokingResource = invokingResource,
+                garage = garage,
+            }
+        )
+
+        if response and response.success then
+            utils.notify(response.message, "success", 8000)
+        else
+            response = response or propertyGarageResult(false, "save_failed", "Nao foi possivel salvar a garagem.")
+            utils.notify(response.message, "error", 8000)
+        end
+
+        finishPropertyGarageCreation(callback, response)
+    end)
+
+    if not started then
+        finishPropertyGarageCreation(callback, propertyGarageResult(false, "editor_busy", "O editor de PolyZone esta ocupado."))
+        return false
+    end
+
+    return true
+end
+
+exports("createPropertyGarage", createPropertyGarage)
+
+local function serializePropertyGarageVector(value, includeHeading)
+    local valueType = type(value)
+    if valueType ~= "table" and valueType ~= "vector3" and valueType ~= "vector4" then return end
+
+    local x = tonumber(value.x or value[1])
+    local y = tonumber(value.y or value[2])
+    local z = tonumber(value.z or value[3])
+    if not x or not y or not z then return end
+
+    local result = { x = x, y = y, z = z }
+    if includeHeading then
+        result.w = tonumber(value.w or value[4]) or 0.0
+    end
+    return result
+end
+
+local function serializePropertyGarageDraft(draft)
+    local source = draft and draft.garage
+    local zones = source and source.zones
+    if type(source) ~= "table" or type(zones) ~= "table" or type(zones.points) ~= "table" then
+        return nil, "A PolyZone do rascunho e invalida."
+    end
+
+    local points = {}
+    for index = 1, #zones.points do
+        local point = serializePropertyGarageVector(zones.points[index], false)
+        if not point then
+            return nil, ("Ponto %d da PolyZone foi perdido no rascunho."):format(index)
+        end
+        points[index] = point
+    end
+
+    local spawnPoints = nil
+    if source.spawnPoint ~= nil then
+        spawnPoints = {}
+        for index = 1, #source.spawnPoint do
+            local point = serializePropertyGarageVector(source.spawnPoint[index], true)
+            if not point then
+                return nil, ("Vaga %d foi perdida no rascunho."):format(index)
+            end
+            spawnPoints[index] = point
+        end
+    end
+
+    local vehicleTypes = {}
+    for index = 1, #(source.type or {}) do
+        vehicleTypes[index] = source.type[index]
+    end
+
+    local spawnModels = nil
+    if type(source.spawnPointVehicle) == "table" then
+        spawnModels = {}
+        for index = 1, #source.spawnPointVehicle do
+            spawnModels[index] = source.spawnPointVehicle[index]
+        end
+    end
+
+    return {
+        type = vehicleTypes,
+        zones = {
+            points = points,
+            thickness = tonumber(zones.thickness) or 4.0,
+        },
+        impound = false,
+        shared = false,
+        persist = source.persist == true,
+        spawnPoint = spawnPoints,
+        spawnPointVehicle = spawnModels,
+        interaction = source.interaction,
+    }
+end
+
+---@param options table
+---@return table result
+local function commitPropertyGarageDraft(options)
+    if type(options) ~= "table" or options.propertyId == nil or type(options.draft) ~= "table" then
+        return propertyGarageResult(false, "invalid_options", "propertyId e draft sao obrigatorios.")
+    end
+
+    local propertyId = tostring(options.propertyId)
+    local draft = options.draft
+    if type(draft.label) ~= "string" or type(draft.garage) ~= "table" then
+        return propertyGarageResult(false, "invalid_draft", "Os dados temporarios da garagem sao invalidos.")
+    end
+
+    local serializedGarage, serializationError = serializePropertyGarageDraft(draft)
+    if not serializedGarage then
+        return propertyGarageResult(false, "invalid_draft", serializationError)
+    end
+
+    local preflight = GarageBridge.callback.await(
+        "forge_garage:cb_server:canCreatePropertyGarage",
+        false,
+        propertyId
+    )
+    if not preflight or not preflight.success then
+        return preflight or propertyGarageResult(false, "preflight_failed", "Nao foi possivel validar a garagem.")
+    end
+
+    return GarageBridge.callback.await(
+        "forge_garage:cb_server:createPropertyGarage",
+        false,
+        {
+            propertyId = propertyId,
+            label = options.label or ('%s #%s'):format(draft.label, propertyId),
+            invokingResource = GetInvokingResource() or GetCurrentResourceName(),
+            garage = serializedGarage,
+        }
+    ) or propertyGarageResult(false, "save_failed", "Nao foi possivel salvar a garagem.")
+end
+
+exports("commitPropertyGarageDraft", commitPropertyGarageDraft)
 --- Delete garage by index
 local function delete(self)
     GarageZone[self.label --[[@as string]]] = nil

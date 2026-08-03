@@ -14,6 +14,18 @@ Config.DisableVehicleCamera = false --- Desativa a movimentação de câmera ao 
 Config.LocateVehicleOutGarage = true --- Opção ZAP: encontrar veículos fora da garagem
 Config.PersistentDistance = 120.0 --- Distância para veículo persistente aparecer/sumir no bucket
 
+-- Criador de garagens publicas para integracoes imobiliarias.
+-- O export client-side `createPropertyGarage` tambem valida o emprego no servidor.
+Config.PropertyGarageCreator = {
+    enabled = true,
+    jobs = {
+        realestate = 0,
+    },
+    ace = "forge-garage.property.create",
+    cooldown = 5000,
+    maxZonePoints = 32,
+    maxSpawnPoints = 64,
+}
 -- Cada grupo abaixo representa variantes que ocupam o mesmo interior.
 -- Somente um IPL de cada grupo pode permanecer ativo no cliente.
 Config.ExclusiveGarageIplGroups = {

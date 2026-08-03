@@ -312,14 +312,23 @@ function GarageDB.gvfp(src)
             local vehname = customName or defaultname
 
             local stateText = GarageBridge.locale('status.in')
+            local stateCode = 'garaged'
+            local outsideVehicle = v.state == 0 and vehFuncS.govbp(plate) or false
 
             if v.state == 0 then
-                stateText = vehFuncS.govbp(plate) and GarageBridge.locale('status.out') or GarageBridge.locale('status.insurance')
+                if outsideVehicle then
+                    stateText = GarageBridge.locale('status.out')
+                    stateCode = 'out'
+                else
+                    stateText = GarageBridge.locale('status.insurance')
+                    stateCode = 'insurance'
+                end
             elseif v.state == 2 then
                 stateText = GarageBridge.locale('status.confiscated')
+                stateCode = 'impounded'
             end
 
-            local inInsurance = v.state == 0
+            local inInsurance = v.state == 0 and not outsideVehicle
             local inPoliceImpound = v.state == 2
 
             local engine = v.engine > 1000 and 1000 or v.engine
@@ -327,11 +336,13 @@ function GarageDB.gvfp(src)
 
             vehicles[#vehicles+1] = {
                 fullname = vehname,
+                spawnName = v.vehicle,
                 brand = brand or '',
                 model = name or '',
                 plate = plate,
                 garage = v.garage,
                 state = stateText,
+                stateCode = stateCode,
                 fuel = v.fuel,
                 engine = engine,
                 body = body,
