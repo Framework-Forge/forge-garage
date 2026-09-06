@@ -296,8 +296,8 @@ local function setUpTarget ( )
     local TargetData = Config.PoliceImpound.Target
     local TargetLable = GarageBridge.locale('target.confiscate_veh')
 
-    if Config.Target == "ox" then
-        exports.ox_target:addGlobalVehicle({
+    if Config.Target == "pr_bridge" then
+        pr_lib.ox_target:addGlobalVehicle({
             {
                 label = TargetLable,
                 icon = 'fas fa-car',

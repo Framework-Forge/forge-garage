@@ -749,7 +749,7 @@ function gzf.refresh ()
             function zoneOptions:onExit()
                 stui = false
                 utils.drawtext('hide')
-                local id = Config.Target == "ox" and "open_garage" or "Open Garage"
+                local id = Config.Target == "pr_bridge" and "open_garage" or "Open Garage"
                 utils.removeTargetPed(ped, id)
             end
         elseif v.interaction == "keypressed" then

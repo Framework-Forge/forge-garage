@@ -4,7 +4,7 @@ Config = {}
 GarageZone = GarageBridge.loadJson('data.garages') ---@type table<string, GarageData>
 CNV = GarageBridge.loadJson('data.vehiclesname') ---@type table<string, CustomName>
 
-Config.Target = 'ox'           -- ox / qb
+Config.Target = 'pr_bridge'    -- pr_bridge / qb
 Config.RadialMenu = 'native'   --- interação local; não depende de bibliotecas externas
 Config.FuelScript = 'cdn-fuel' --- forge_fuel / ox_fuel / LegacyFuel / ps-fuel / cdn-fuel
 Config.changeNamePrice = 15000 --- price for changing the name of the vehicle in the garage

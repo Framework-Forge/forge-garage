@@ -2,6 +2,8 @@ local spawnPoint = GarageBridge.loadModule('modules.spawnpoint')
 local pedcreator = GarageBridge.loadModule('modules.pedcreator')
 
 local listGarage
+local garageParentMenu
+local garageParentResource
 
 local function buildGarageZone(points)
     if type(points) ~= 'table' or #points < 3 then return end
@@ -2494,11 +2496,20 @@ local function openGarageActionsMenu(self)
     return true
 end
 
-listGarage = function()
+listGarage = function(parentMenu, parentResource)
+    if type(parentMenu) == 'string' and parentMenu ~= '' then
+        garageParentMenu = parentMenu
+        garageParentResource = parentResource or GetInvokingResource()
+        if garageParentResource == GetCurrentResourceName() then
+            garageParentResource = nil
+        end
+    end
+
     local context = {
         id = 'rhd:list_garage',
         title = GarageBridge.locale("context.admin.listgarage_title"),
-        menu = 'menu_gerencial',
+        menu = garageParentMenu or 'menu_gerencial',
+        menuResource = garageParentMenu and garageParentResource or nil,
         options = {
             {
                 title = GarageBridge.locale('context.admin.addnewgarage'),
@@ -2663,4 +2674,8 @@ RegisterNetEvent('forge_garage:client:syncConfig', function(newconfig)
     gzf.refresh()
 end)
 
-RegisterNetEvent("forge_garage:client:garagelist", listGarage)
+RegisterNetEvent("forge_garage:client:garagelist", function(parentMenu, parentResource)
+    garageParentMenu = nil
+    garageParentResource = nil
+    listGarage(parentMenu, parentResource)
+end)

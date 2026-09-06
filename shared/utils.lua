@@ -146,7 +146,7 @@ function utils.createTargetPed(model, coords, options)
                 label = data.label,
                 icon = data.icon,
             }
-            if Config.Target == "ox" then
+            if Config.Target == "pr_bridge" then
                 opt.groups = data.groups
                 opt.distance = data.distance
                 opt.onSelect = data.action
@@ -161,8 +161,8 @@ function utils.createTargetPed(model, coords, options)
     end
 
     if #newoptions > 0 then
-        if Config.Target == "ox" then
-            exports.ox_target:addLocalEntity(ped, newoptions)
+        if Config.Target == "pr_bridge" then
+            pr_lib.ox_target:addLocalEntity(ped, newoptions)
         elseif Config.Target == "qb" then
             local param = {
                 options = newoptions,
@@ -177,8 +177,8 @@ end
 
 function utils.removeTargetPed(entity, label)
     if DoesEntityExist(entity) then
-        if Config.Target == "ox" then
-            exports.ox_target:removeLocalEntity(entity, label)
+        if Config.Target == "pr_bridge" then
+            pr_lib.ox_target:removeLocalEntity(entity, label)
             DeleteEntity(entity)
         elseif Config.Target == "qb" then
             exports['qb-target']:RemoveTargetEntity(entity, label)
