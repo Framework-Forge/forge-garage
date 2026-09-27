@@ -66,8 +66,14 @@ local function isPersistentVehicleProtected(plate, entity, netId)
     end
     if hasTimedRevProtection(revvingPersistentNetIds, netId) then return true end
 
-    if entity and DoesEntityExist(entity) and Entity(entity).state.pr_carkeys_revving then
-        return true
+    if entity and DoesEntityExist(entity) then
+        local state = Entity(entity).state
+        if state.pr_carkeys_revving then return true end
+
+        local driver = GetPedInVehicleSeat(entity, -1)
+        if driver and driver ~= 0 then return true end
+        if GetEntitySpeed(entity) > 0.15 then return true end
+        if state.isPersistent == false then return true end
     end
 
     return false
@@ -122,7 +128,7 @@ local function getTrackedPersistentVehicle(garageName, plate)
 end
 
 local function getWorldVehicleByPlate(plate)
-    local plateKey = normalizePlate(plate)
+    local plateKey = GarageVehicleIdentity.resolve(plate)
     if not plateKey then return nil end
 
     local vehicles = GetAllVehicles()
@@ -136,7 +142,7 @@ local function getWorldVehicleByPlate(plate)
                 nativePlate = ok and value or nil
             end
 
-            if normalizePlate(statePlate or nativePlate) == plateKey then
+            if GarageVehicleIdentity.resolve(statePlate or nativePlate) == plateKey then
                 return entity, NetworkGetNetworkIdFromEntity(entity)
             end
         end
@@ -168,12 +174,37 @@ local function trackPersistentVehicle(garageName, plate, entity, netId)
         end
     end
 
+    if Parking and Parking.trackPersistentEntity then
+        Parking.trackPersistentEntity(garageName,plate,entity,netId)
+    end
     local canonicalPlate = tostring(plate)
     activeStoredVehicles[canonicalPlate] = entity
     storedVehiclesGarage[canonicalPlate] = garageName
     if activeGarages[garageName] and activeGarages[garageName].vehicles then
         activeGarages[garageName].vehicles[canonicalPlate] = netId or NetworkGetNetworkIdFromEntity(entity)
     end
+end
+
+-- Internal server hook: never exposed as a client-authorized storage event.
+function GarageRestoreMeterParking(session,entity)
+    if not DoesEntityExist(entity) or normalizePlate(Entity(entity).state.plate or GetVehicleNumberPlateText(entity))~=session.plate then return false end
+    local pos=GetEntityCoords(entity)
+    if #(pos-vector3(session.origin.x,session.origin.y,session.origin.z))>6 or GetEntitySpeed(entity)>=0.4 then return false end
+    local coords=json.encode({x=pos.x,y=pos.y,z=pos.z,w=GetEntityHeading(entity)})
+    if not GarageDB.uvs(session.plate,1,session.garage,coords) then
+        local row=pr_lib.database.single("SELECT state,garage FROM player_vehicles WHERE REPLACE(UPPER(plate),' ','')=? OR REPLACE(UPPER(fakeplate),' ','')=? LIMIT 1",{session.plate,session.plate})
+        if not row or tonumber(row.state)~=1 or row.garage~=session.garage then return false end
+    end
+    exports['pr_carkeys']:SetLockState(entity,2)
+    local state=Entity(entity).state
+    state:set('isPersistent',true,true)
+    state:set('garageName',session.garage,true)
+    state:set('pr_carkeys_skipRevPed',true,true)
+    FreezeEntityPosition(entity,true)
+    activeGarages[session.garage]=activeGarages[session.garage] or {players={},vehicles={}}
+    trackPersistentVehicle(session.garage,session.plate,entity,session.netId)
+    TriggerClientEvent('forge_garage:client:restoreMeterParking',-1,session.plate,session.netId,session.garage)
+    return true
 end
 
 local function removeTrackedPersistentVehicle(garageName, plate, netId)
@@ -208,6 +239,53 @@ local function removeTrackedPersistentVehicle(garageName, plate, netId)
     end
 end
 
+-- Recover a vehicle detached in the database but stranded in the garage private bucket.
+-- The state=0 check prevents recovering a vehicle that is actually stored.
+function GarageRecoverOutsideVehicle(source, plate)
+    local src = tonumber(source)
+    local vehicleData = GarageDB.gpvbp(plate)
+    if not src or not vehicleData or tonumber(vehicleData.state) ~= 0 then
+        return nil, "vehicle_not_outside"
+    end
+
+    local identifier = pr_lib.framework.GetIdentifier(src)
+    local allowed = identifier and vehicleData.owner and vehicleData.owner.citizenid == identifier
+    if not allowed and GetResourceState('pr_carkeys') == 'started' then
+        local ok, hasAccess = pcall(function()
+            return exports['pr_carkeys']:HasVehicleAccess(src, vehicleData.plate)
+        end)
+        allowed = ok and hasAccess == true
+    end
+    if not allowed then return nil, "not_authorized" end
+
+    local entity, netId = getWorldVehicleByPlate(vehicleData.plate)
+    if not entity or not DoesEntityExist(entity) then
+        return nil, "entity_missing"
+    end
+
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 then return nil, "player_missing" end
+
+    local state = Entity(entity).state
+    state:set('isPersistent', false, true)
+    state:set('garageName', nil, true)
+    state:set('pr_carkeys_skipRevPed', nil, true)
+    SetEntityRoutingBucket(entity, GetPlayerRoutingBucket(src))
+    FreezeEntityPosition(entity, false)
+
+    local coords = GetEntityCoords(entity)
+    if coords.z < -20.0 then
+        local playerCoords = GetEntityCoords(ped)
+        SetEntityCoords(entity, playerCoords.x + 3.0, playerCoords.y, playerCoords.z + 1.0, false, false, false, false)
+    end
+
+    removeTrackedPersistentVehicle(vehicleData.garage, vehicleData.plate, netId)
+    TriggerClientEvent('forge_garage:client:detachPersistentVehicle', -1, vehicleData.plate, netId)
+    TriggerClientEvent('forge_garage:client:recoverOutsideVehicle', src, netId)
+
+    return entity
+end
+
 --- callback
 GarageBridge.callback.register('forge_garage:cb_server:removeMoney', function(src, type, amount)
     return pr_lib.framework.RemovePlayerAccountBalance(src, type, amount, "Garage interaction")
@@ -224,7 +302,7 @@ GarageBridge.callback.register('forge_garage:cb_server:pullVehicleFromBucket', f
     end
 
     if entity and DoesEntityExist(entity) then
-        local displayPlate = vehicleData.fakeplate or vehicleData.plate
+        local displayPlate = utils.vehicleDisplayPlate(vehicleData)
         if not GarageDB.uvs(vehicleData.plate, 0, trackedGarage, nil) then
             return { success = false, reason = "database_update_failed" }
         end
@@ -233,6 +311,7 @@ GarageBridge.callback.register('forge_garage:cb_server:pullVehicleFromBucket', f
         local playerBucket = GetEntityRoutingBucket(playerPed)
 
         pcall(SetVehicleNumberPlateText, entity, displayPlate)
+        GarageVehicleIdentity.sync(entity)
         SetEntityRoutingBucket(entity, playerBucket)
 
         if GetResourceState('pr_carkeys') == 'started' then
@@ -506,7 +585,7 @@ GarageBridge.callback.register('forge_garage:cb_server:adminPullGarageVehicle', 
 
     local reused = entity and DoesEntityExist(entity) or false
     local targetCoords = { x = x, y = y, z = z, w = heading }
-    local displayPlate = vehicleData.fakeplate or vehicleData.plate
+    local displayPlate = utils.vehicleDisplayPlate(vehicleData)
 
     if not reused then
         local props = type(vehicleData.mods) == "table" and vehicleData.mods or {}
@@ -531,6 +610,7 @@ GarageBridge.callback.register('forge_garage:cb_server:adminPullGarageVehicle', 
     local state = Entity(entity).state
     state:set('isPersistent', false, true)
     state:set('plate', vehicleData.plate, true)
+    GarageVehicleIdentity.sync(entity)
     state:set('garageName', nil, true)
 
     removeTrackedPersistentVehicle(actualGarage, vehicleData.plate, netId)
@@ -581,8 +661,12 @@ end)
 
 RegisterNetEvent("forge_garage:server:updateState", function ( data )
     if GetInvokingResource() then return end
-    GarageDB.uvs(data.plate, data.state, data.garage, data.parking_coords)
-    
+    if type(data) ~= 'table' then return end
+    if data.state == 1 and Parking and Parking.onVehicleStored then
+        if not Parking.onVehicleStored(source, data) then return end
+    end
+    if not GarageDB.uvs(data.plate, data.state, data.garage, data.parking_coords) then return end
+
     if data.state == 1 and data.parking_coords and data.garage then
         if data.netId then
             local entity = NetworkGetEntityFromNetworkId(data.netId)
@@ -606,6 +690,9 @@ RegisterNetEvent("forge_garage:server:updateState", function ( data )
             triggerPersistentSingleSpawn(data.garage, data.plate, data.parking_coords)
         end
     elseif data.state == 0 and data.garage then
+        if Parking and Parking.onVehicleWithdrawn then
+            Parking.onVehicleWithdrawn(data.plate)
+        end
         deletePersistentVehicle(data.garage, data.plate)
         removeTrackedPersistentVehicle(data.garage, data.plate)
         TriggerClientEvent('forge_garage:client:releasePersistentVehicle', -1, data.plate)
@@ -614,7 +701,15 @@ end)
 
 RegisterNetEvent("forge_garage:server:saveGarageZone", function(fileData)
     if GetInvokingResource() then return end
+    if not hasGarageAdminAccess(source) then return end
     if type(fileData) ~= "table" or type(fileData) == "nil" then return end
+    if Parking and Parking.validateConfig then
+        local ok, valid, reason = pcall(Parking.validateConfig, fileData)
+        if not ok or not valid then
+            GarageBridge.notify(source, { description = reason or 'Configuracao de parquimetro invalida.', type = 'error' })
+            return
+        end
+    end
     return storage.SaveGarage(fileData)
 end)
 
@@ -733,6 +828,17 @@ local function sanitizePropertyGarage(payload)
 
     local thickness = finitePropertyGarageNumber(zones.thickness or 4.0, 1.0, 20.0)
     if not thickness then return nil, "Altura da PolyZone invalida." end
+    local minZ = zones.minZ ~= nil and finitePropertyGarageNumber(zones.minZ, -1000.0, 3000.0) or nil
+    local maxZ = zones.maxZ ~= nil and finitePropertyGarageNumber(zones.maxZ, -1000.0, 3000.0) or nil
+    if (zones.minZ ~= nil and not minZ) or (zones.maxZ ~= nil and not maxZ) then
+        return nil, "Limites verticais da PolyZone invalidos."
+    end
+    if minZ and maxZ then
+        if minZ >= maxZ or maxZ - minZ < 1.0 or maxZ - minZ > 20.0 then
+            return nil, "Piso/teto da PolyZone invalidos."
+        end
+        thickness = maxZ - minZ
+    end
 
     local spawnPoints = {}
     local spawnModels = {}
@@ -771,6 +877,8 @@ local function sanitizePropertyGarage(payload)
             zones = {
                 points = zonePoints,
                 thickness = thickness,
+                minZ = minZ,
+                maxZ = maxZ,
             },
             impound = false,
             shared = false,
@@ -930,8 +1038,8 @@ GarageBridge.callback.register('forge_garage:cb_server:getPlayerKeyItems', funct
     local src = source
     local keysList = {}
     
-    if GetResourceState('ox_inventory') == 'started' then
-        local permSlots = exports.ox_inventory:GetSlotsWithItem(src, 'carkey_permanent', nil)
+    if type(pr_lib.inventory.GetSlotsWithItem) == 'function' then
+        local permSlots = pr_lib.inventory.GetSlotsWithItem(src, 'carkey_permanent', nil)
         if permSlots then
             for _, slot in pairs(permSlots) do
                 if slot.metadata and slot.metadata.barcode and slot.metadata.plate then
@@ -947,7 +1055,7 @@ GarageBridge.callback.register('forge_garage:cb_server:getPlayerKeyItems', funct
             end
         end
 
-        local copySlots = exports.ox_inventory:GetSlotsWithItem(src, 'carkey_copy', nil)
+        local copySlots = pr_lib.inventory.GetSlotsWithItem(src, 'carkey_copy', nil)
         if copySlots then
             for _, slot in pairs(copySlots) do
                 if slot.metadata and slot.metadata.barcode and slot.metadata.plate then
@@ -972,7 +1080,7 @@ GarageBridge.callback.register('forge_garage:cb_server:getOwnedVehiclesForKeys',
     local citizenid = pr_lib.framework.GetIdentifier(src)
     if not citizenid then return {} end
 
-    local results = MySQL.query.await([[
+    local results = pr_lib.database.query([[
         SELECT vehicle, vehicle_name, plate, fakeplate
         FROM player_vehicles WHERE citizenid = ?
     ]], {citizenid})
@@ -1140,8 +1248,8 @@ function triggerPersistentSingleSpawn(garageName, plate, parkingCoords)
     local spawner = getSpawnerForGarage(garageName)
     if not spawner then return end
 
-    local result = MySQL.single.await([[
-        SELECT mods, deformation, fuel, engine, body
+    local result = pr_lib.database.single([[
+        SELECT id, plate, fakeplate, mods, deformation, fuel, engine, body
         FROM player_vehicles
         WHERE plate = ? OR fakeplate = ?
     ]], {plate, plate})
@@ -1149,7 +1257,9 @@ function triggerPersistentSingleSpawn(garageName, plate, parkingCoords)
     if result then
         local vehList = {
             {
-                plate = plate,
+                id = result.id,
+                plate = result.plate,
+                fakeplate = result.fakeplate,
                 mods = result.mods,
                 deformation = result.deformation,
                 fuel = result.fuel,
@@ -1361,7 +1471,7 @@ end)
 -- Callback to check if player holds keys for a vehicle plate in their inventory
 GarageBridge.callback.register('forge_garage:cb_server:hasKeyForPlate', function(source, plate)
     local src = source
-    local targetPlate = normalizePlate(plate)
+    local targetPlate = GarageVehicleIdentity.resolve(plate)
     if not targetPlate then return false end
 
     if GetResourceState('pr_carkeys') == 'started' then
@@ -1373,8 +1483,8 @@ GarageBridge.callback.register('forge_garage:cb_server:hasKeyForPlate', function
         end
     end
 
-    if GetResourceState('ox_inventory') == 'started' then
-        local permSlots = exports.ox_inventory:GetSlotsWithItem(src, 'carkey_permanent', nil)
+    if type(pr_lib.inventory.GetSlotsWithItem) == 'function' then
+        local permSlots = pr_lib.inventory.GetSlotsWithItem(src, 'carkey_permanent', nil)
         if permSlots then
             for _, slot in pairs(permSlots) do
                 if slot.metadata and normalizePlate(slot.metadata.plate) == targetPlate then
@@ -1383,7 +1493,7 @@ GarageBridge.callback.register('forge_garage:cb_server:hasKeyForPlate', function
             end
         end
 
-        local copySlots = exports.ox_inventory:GetSlotsWithItem(src, 'carkey_copy', nil)
+        local copySlots = pr_lib.inventory.GetSlotsWithItem(src, 'carkey_copy', nil)
         if copySlots then
             for _, slot in pairs(copySlots) do
                 if slot.metadata and normalizePlate(slot.metadata.plate) == targetPlate then
@@ -1400,7 +1510,7 @@ RegisterNetEvent('forge_garage:server:withdrawPersistentVehicle', function(garag
     local src = source
     if not plate then return end
 
-    local plateKey = normalizePlate(plate)
+    local plateKey = GarageVehicleIdentity.resolve(plate)
     if not plateKey then return end
     if withdrawingPersistentVehicles[plateKey] then return end
     withdrawingPersistentVehicles[plateKey] = true
@@ -1414,8 +1524,8 @@ RegisterNetEvent('forge_garage:server:withdrawPersistentVehicle', function(garag
         hasKey = ok and hasAccess == true
     end
 
-    if not hasKey and GetResourceState('ox_inventory') == 'started' then
-        local permSlots = exports.ox_inventory:GetSlotsWithItem(src, 'carkey_permanent', nil)
+    if not hasKey and type(pr_lib.inventory.GetSlotsWithItem) == 'function' then
+        local permSlots = pr_lib.inventory.GetSlotsWithItem(src, 'carkey_permanent', nil)
         if permSlots then
             for _, slot in pairs(permSlots) do
                 if slot.metadata and normalizePlate(slot.metadata.plate) == plateKey then
@@ -1425,7 +1535,7 @@ RegisterNetEvent('forge_garage:server:withdrawPersistentVehicle', function(garag
             end
         end
         if not hasKey then
-            local copySlots = exports.ox_inventory:GetSlotsWithItem(src, 'carkey_copy', nil)
+            local copySlots = pr_lib.inventory.GetSlotsWithItem(src, 'carkey_copy', nil)
             if copySlots then
                 for _, slot in pairs(copySlots) do
                     if slot.metadata and normalizePlate(slot.metadata.plate) == plateKey then
@@ -1439,13 +1549,28 @@ RegisterNetEvent('forge_garage:server:withdrawPersistentVehicle', function(garag
 
     if hasKey then
         -- Update vehicle status to out of garage in database
-        local updated = GarageDB.uvs(plate, 0, nil, nil)
+        local updated = GarageDB.uvs(plateKey, 0, nil, nil)
         if not updated then
             print(("[forge-garage][persistent] failed to withdraw vehicle from database plate=%s normalized=%s src=%s"):format(tostring(plate), tostring(plateKey), tostring(src)))
             withdrawingPersistentVehicles[plateKey] = nil
             return
         end
         
+        local entity = netId and NetworkGetEntityFromNetworkId(netId) or nil
+        if not entity or not DoesEntityExist(entity) then
+            entity, netId = getTrackedPersistentVehicle(garageName, plate)
+        end
+
+        -- Detach server-side before releasing tracking to close the exit-zone race.
+        if entity and DoesEntityExist(entity) then
+            local state = Entity(entity).state
+            state:set('isPersistent', false, true)
+            state:set('garageName', nil, true)
+            state:set('pr_carkeys_skipRevPed', nil, true)
+            SetEntityRoutingBucket(entity, GetPlayerRoutingBucket(src))
+            FreezeEntityPosition(entity, false)
+        end
+
         removeTrackedPersistentVehicle(garageName, plate, netId)
 
         -- Detach the already spawned entity from the persistent garage GarageBridge.cache.

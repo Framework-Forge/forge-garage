@@ -4,9 +4,7 @@ Config = {}
 GarageZone = GarageBridge.loadJson('data.garages') ---@type table<string, GarageData>
 CNV = GarageBridge.loadJson('data.vehiclesname') ---@type table<string, CustomName>
 
-Config.Target = 'pr_bridge'    -- pr_bridge / qb
 Config.RadialMenu = 'native'   --- interação local; não depende de bibliotecas externas
-Config.FuelScript = 'cdn-fuel' --- forge_fuel / ox_fuel / LegacyFuel / ps-fuel / cdn-fuel
 Config.changeNamePrice = 15000 --- price for changing the name of the vehicle in the garage
 Config.SpawnInVehicle = false  --- change this to true if you want the player to immediately enter the vehicle when the vehicle is taken out of the garage
 Config.VehiclesInAllGarages = false --- Opção ZAP: deixe true para todos os veículos do player aparecerem em todas as garagens
@@ -139,7 +137,7 @@ Config.GarageIpls = {
     { label = "Biker Clubhouse Garage 2", ipl = "bkr_biker_interior_placement_interior_1_biker_dlc_int_02_milo", preview = vec4(998.4809, -3164.711, -38.90733, 0.0) }
 }
 
---- Additional: (Requires ox_target or qb-target resource)
+--- Additional: uses the native PR Bridge target
 Config.UseJobVechileShop = false --- Change this to false if you do not want to use the work vehicle shop system from rhd
 Config.UsePoliceImpound = true  --- change it to false if you don't want to use the police impound system from rhd
 

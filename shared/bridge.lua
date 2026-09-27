@@ -211,7 +211,7 @@ if isServer then
         end
 
         local modelHash = type(model) == "number" and model or joaat(model)
-        local vehicleData = exports.qbx_core:GetVehiclesByHash(modelHash)
+        local vehicleData = pr_lib.framework.GetVehicleData(modelHash)
         local vehicleType = vehicleData and vehicleData.type
 
         if not vehicleType then
@@ -246,7 +246,7 @@ if isServer then
 
         SetEntityOrphanMode(vehicle, 2)
         pcall(function()
-            exports.qbx_core:EnablePersistence(vehicle)
+            pr_lib.framework.SetVehiclePersistence(vehicle, true)
         end)
 
         local netId = NetworkGetNetworkIdFromEntity(vehicle)
@@ -299,11 +299,24 @@ else
     end
 
     function bridge.getVehicleProperties(vehicle)
-        return pr_lib.fivem.getVehicleProperties(vehicle)
+        local props = pr_lib.fivem.getVehicleProperties(vehicle)
+        if props and IsVehicleAConvertible(vehicle, false) then
+            props.convertibleRoofState = GetConvertibleRoofState(vehicle)
+        end
+        return props
     end
 
     function bridge.setVehicleProperties(vehicle, properties)
-        return pr_lib.fivem.setVehicleProperties(vehicle, properties)
+        local applied = pr_lib.fivem.setVehicleProperties(vehicle, properties)
+        if applied and type(properties) == 'table' and IsVehicleAConvertible(vehicle, false) then
+            local roof = tonumber(properties.convertibleRoofState)
+            if roof == 1 or roof == 2 then
+                LowerConvertibleRoof(vehicle, true)
+            elseif roof == 0 or roof == 3 then
+                RaiseConvertibleRoof(vehicle, true)
+            end
+        end
+        return applied
     end
 
     function bridge.getClosestVehicle(coords, radius)
@@ -430,7 +443,7 @@ else
         end
 
         if #zone.points < 3 then return false end
-        if math.abs(coords.z - zone.centerZ) > zone.halfThickness then return false end
+        if coords.z < zone.minZ or coords.z > zone.maxZ then return false end
         return pointInPolygon(coords, zone.points)
     end
 
@@ -481,6 +494,8 @@ else
             radius = tonumber(options.radius) or 1.0,
             points = options.points or {},
             thickness = tonumber(options.thickness) or 4.0,
+            minZ = tonumber(options.minZ),
+            maxZ = tonumber(options.maxZ),
             inside = options.inside,
             onEnter = options.onEnter,
             onExit = options.onExit,
@@ -489,12 +504,17 @@ else
         }
 
         if kind == "poly" then
-            local totalZ = 0.0
+            local minimumZ, maximumZ = math.huge, -math.huge
             for index = 1, #zone.points do
-                totalZ = totalZ + (zone.points[index].z or 0.0)
+                local pointZ = tonumber(zone.points[index].z) or 0.0
+                minimumZ = math.min(minimumZ, pointZ)
+                maximumZ = math.max(maximumZ, pointZ)
             end
-            zone.centerZ = #zone.points > 0 and totalZ / #zone.points or 0.0
-            zone.halfThickness = zone.thickness / 2.0
+            if #zone.points == 0 then minimumZ, maximumZ = 0.0, 0.0 end
+            zone.minZ = zone.minZ or (minimumZ - zone.thickness * 0.5)
+            zone.maxZ = zone.maxZ or (maximumZ + zone.thickness * 0.5)
+            if zone.minZ > zone.maxZ then zone.minZ, zone.maxZ = zone.maxZ, zone.minZ end
+            zone.thickness = zone.maxZ - zone.minZ
         end
 
         function zone:remove()

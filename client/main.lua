@@ -131,7 +131,7 @@ local function spawnvehicle(data)
         end
         
         local spawnProps = type(vehData.mods) == "table" and vehData.mods or {}
-        local expectedPlate = spawnProps.plate or vehData.fakeplate or vehData.plate or data.plate
+        local expectedPlate = utils.vehicleDisplayPlate(vehData) or spawnProps.plate or data.plate
         if expectedPlate then
             spawnProps.plate = expectedPlate
         end
@@ -171,6 +171,7 @@ local function spawnvehicle(data)
             local state = Entity(vehEntity).state
             state:set('isPersistent', true, true)
             state:set('plate', vehData.plate or data.plate, true)
+            utils.applyVehicleIdentity(vehEntity, vehData)
             state:set('garageName', vehData.garage or data.garage, true)
             
             local netId = NetworkGetNetworkIdFromEntity(vehEntity)
@@ -180,7 +181,7 @@ local function spawnvehicle(data)
         if (not vehData.mods or json.encode(vehData.mods) == "[]") and
             (not data.prop or json.encode(data.prop) == "[]") and
             data.plate then
-            SetVehicleNumberPlateText(vehEntity, data.plate)
+            SetVehicleNumberPlateText(vehEntity, expectedPlate or data.plate)
             if Config.GiveKeys.tempkeys then
                 TriggerEvent("vehiclekeys:client:SetOwner", data.plate)
             end
@@ -536,6 +537,7 @@ local function openMenu(data)
         local body = vd.body
         local fuel = vd.fuel
         local dp = vd.depotprice
+        local hasKey = vd.hasKey ~= false
         
         local vehName = vd.vehicle_name or utils.getVehicleLabel(vehModel)
         local customvehName = CNV[plate] and CNV[plate].name
@@ -569,6 +571,11 @@ local function openMenu(data)
                 end
             end
             
+            if data.impound and not hasKey then
+                disabled = true
+                description = 'RETIRADA BLOQUEADA: VOCE PRECISA DA CHAVE DESTE VEICULO.'
+            end
+
             if gState == 1 then
                 impound = false
                 description = 'STATUS: ' .. GarageBridge.locale('status.in')
@@ -709,6 +716,26 @@ local function storeVeh(data)
         utils.notify(GarageBridge.locale('notify.error.is_service_garage'), 'error')
     end
 
+    local garageConfig = GarageZone[data.garage]
+    if garageConfig and garageConfig.parking and garageConfig.parking.enabled then
+        local vehicleCoords = GetEntityCoords(vehicle)
+        local streetHash, crossingHash = GetStreetNameAtCoord(vehicleCoords.x, vehicleCoords.y, vehicleCoords.z)
+        local street = GetStreetNameFromHashKey(streetHash)
+        local crossing = crossingHash and crossingHash ~= 0 and GetStreetNameFromHashKey(crossingHash) or ''
+        local zoneCode = GetNameOfZone(vehicleCoords.x, vehicleCoords.y, vehicleCoords.z)
+        local zone = zoneCode and GetLabelText(zoneCode) or ''
+        local location = street
+        if crossing ~= '' then location = location .. ' / ' .. crossing end
+        if zone ~= '' and zone ~= 'NULL' then location = location .. ' - ' .. zone end
+        local accepted = GarageBridge.callback.await('forge_garage:cb_server:beginMeterParking', false, {
+            plate = plate, garage = data.garage, netId = NetworkGetNetworkIdFromEntity(vehicle),
+            parkingLocation = location,
+        })
+
+        if not accepted then
+            return utils.notify('Estacione em uma vaga livre com parquimetro configurado.', 'error', 8000)
+        end
+    end
     returnPrCarKeyFromIgnition(vehicle, plate)
     SetVehicleEngineOn(vehicle, false, true, true)
 

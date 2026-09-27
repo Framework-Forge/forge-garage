@@ -11,26 +11,44 @@ end
 ---@param plate any
 ---@return integer | boolean
 function vehFunc.govbp(plate)
+    if type(plate) ~= 'string' then return false end
+    plate = plate:gsub('%s+', ''):upper()
     local Vehicles = GetGamePool("CVehicle")
     for i=1, #Vehicles do
         local entity = Vehicles[i]
         local Exist = DoesEntityExist(entity)
         local Dead = IsEntityDead(entity)
-        
-        if Dead then
-            SetEntityAsMissionEntity(entity, true, true)
-            DeleteEntity(entity)
-        end
 
         if Exist and not Dead then
             local vP = utils.getPlate(entity)
-            if vP == plate then
+            local identity = Entity(entity).state.garageVehicleIdentity
+            local original = type(identity) == 'table' and identity.originalPlate
+            if vP == plate or original == plate then
                 return entity
             end
         end
     end
     return false
 end
+
+
+RegisterNetEvent('forge_garage:client:recoverOutsideVehicle', function(netId)
+    if not netId or not NetworkDoesNetworkIdExist(netId) then return end
+
+    local vehicle = NetToVeh(netId)
+    if not vehicle or vehicle == 0 or not DoesEntityExist(vehicle) then return end
+
+    NetworkRequestControlOfEntity(vehicle)
+    local timeout = GetGameTimer() + 1500
+    while not NetworkHasControlOfEntity(vehicle) and GetGameTimer() < timeout do
+        Wait(0)
+        NetworkRequestControlOfEntity(vehicle)
+    end
+
+    FreezeEntityPosition(vehicle, false)
+    SetEntityCollision(vehicle, true, true)
+    SetVehicleOnGroundProperly(vehicle)
+end)
 
 --- Track Vehicle By Plate
 ---@param plate any

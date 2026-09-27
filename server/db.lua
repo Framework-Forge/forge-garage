@@ -9,17 +9,6 @@ local function normalizePlate(plate)
     return tostring(plate):gsub("%s+", ""):upper()
 end
 
-local QBShared = nil
-local function getQBShared()
-    if not QBShared then
-        local QBCore = exports['qb-core']:GetCoreObject()
-        if QBCore then
-            QBShared = QBCore.Shared
-        end
-    end
-    return QBShared
-end
-
 --- Get Player Vehicles By Garage
 function GarageDB.gpvbg(src, garage, filter)
     local Identifier = pr_lib.framework.GetIdentifier(src)
@@ -33,6 +22,24 @@ function GarageDB.gpvbg(src, garage, filter)
         keys = err
     end
 
+    local physicalKeys = {}
+    for _, plate in ipairs(type(keys) == 'table' and keys or {}) do
+        local normalized = normalizePlate(plate)
+        if normalized then physicalKeys[normalized] = true end
+    end
+
+    -- Recovery must also be available to the owner when physical keys were lost.
+    -- Normal/shared garages retain their existing key requirements.
+    if filter and filter.impound then
+        keys = type(keys) == 'table' and keys or {}
+        local seen = {}
+        for _, plate in ipairs(keys) do seen[normalizePlate(plate)] = true end
+        local owned = pr_lib.database.query('SELECT plate FROM player_vehicles WHERE citizenid = ?', {Identifier}) or {}
+        for _, row in ipairs(owned) do
+            local plate = normalizePlate(row.plate)
+            if plate and not seen[plate] then keys[#keys+1]=row.plate; seen[plate]=true end
+        end
+    end
     if not keys or #keys == 0 then
         return {}
     end
@@ -53,7 +60,7 @@ function GarageDB.gpvbg(src, garage, filter)
         value = {keys, garage, 1}
     end
 
-    if filter and not Config.VehiclesInAllGarages then
+    if filter and (filter.impound or not Config.VehiclesInAllGarages) then
         if not filter.impound then
             if filter.shared then
                 format = [[
@@ -72,8 +79,16 @@ function GarageDB.gpvbg(src, garage, filter)
         end
     end
 
+    local placeholders = {}
+    local parameters = {}
+    for _, plate in ipairs(keys) do
+        placeholders[#placeholders + 1] = '?'
+        parameters[#parameters + 1] = plate
+    end
+    for i = 2, #value do parameters[#parameters + 1] = value[i] end
+    format = format:gsub('IN %(%?%)', 'IN (' .. table.concat(placeholders, ',') .. ')')
     local vehicles = {}
-    local results = MySQL.query.await(format, value)
+    local results = pr_lib.database.query(format, parameters)
 
     if results and #results > 0 then
         for i=1, #results do
@@ -97,7 +112,8 @@ function GarageDB.gpvbg(src, garage, filter)
                 plate = plate,
                 fakeplate = fakeplate,
                 depotprice = depotprice,
-                deformation = deformation
+                deformation = deformation,
+                hasKey = physicalKeys[normalizePlate(data.plate)] == true
             }
 
             if filter and filter.shared and data.charinfo then
@@ -115,8 +131,9 @@ end
 
 --- Get Player Vehicle By Plate
 function GarageDB.gpvbp(plate)
-    local result = MySQL.single.await([[
+    local result = pr_lib.database.single([[
         SELECT 
+            pv.id,
             pv.citizenid,
             pv.vehicle,
             pv.vehicle_name,
@@ -135,6 +152,8 @@ function GarageDB.gpvbp(plate)
     ]], {plate, plate})
     if not result then return false end
 
+    GarageVehicleIdentity.remember(result)
+
     local charinfo = result.charinfo and json.decode(result.charinfo)
     local ownername = charinfo and ("%s %s"):format(charinfo.firstname, charinfo.lastname) or "Unknown Owner"
 
@@ -143,6 +162,7 @@ function GarageDB.gpvbp(plate)
             name = ownername,
             citizenid = result.citizenid,
         },
+        id = result.id,
         vehicle = json.decode(result.mods),
         vehicle_name = result.vehicle_name,
         mods = json.decode(result.mods),
@@ -170,20 +190,20 @@ function GarageDB.uvs(plate, state, garage, parking_coords)
         parking_coords = nil
     end
     local normalizedPlate = normalizePlate(plate)
-    local Update = MySQL.update.await([[
+    local Update = pr_lib.database.update([[
         UPDATE player_vehicles
         SET state = ?, garage = ?, parking_coords = ?
         WHERE plate = ? OR fakeplate = ?
             OR REPLACE(UPPER(plate), ' ', '') = ?
             OR REPLACE(UPPER(fakeplate), ' ', '') = ?
     ]], {state, garage, parking_coords, plate, plate, normalizedPlate, normalizedPlate})
-    return Update > 0
+    return type(Update) == 'number' and Update > 0
 end
 
 --- Mark Vehicle Outside And Clear Its Garage Assignment
 function GarageDB.setVehicleOutside(plate)
     local normalizedPlate = normalizePlate(plate)
-    local update = MySQL.update.await([[
+    local update = pr_lib.database.update([[
         UPDATE player_vehicles
         SET state = 0, garage = NULL, parking_coords = NULL
         WHERE plate = ? OR fakeplate = ?
@@ -195,14 +215,14 @@ end
 
 --- Update Vehicle State Police Impound
 function GarageDB.uvspi(plate, state)
-    local update = MySQL.update.await("UPDATE player_vehicles SET state = ? WHERE plate = ? OR fakeplate = ?", {state, plate, plate})
-    return update > 0
+    local update = pr_lib.database.update("UPDATE player_vehicles SET state = ? WHERE plate = ? OR fakeplate = ?", {state, plate, plate})
+    return type(update) == 'number' and update > 0
 end
 
 --- Swap Vehicle Garage
 function GarageDB.svg(newgarage, plate)
-    local update = MySQL.update.await("UPDATE player_vehicles SET garage = ? WHERE plate = ? OR fakeplate = ?", {newgarage, plate, plate})
-    return update > 0
+    local update = pr_lib.database.update("UPDATE player_vehicles SET garage = ? WHERE plate = ? OR fakeplate = ?", {newgarage, plate, plate})
+    return type(update) == 'number' and update > 0
 end
 
 --- Update Vehicle Owner (Transfer)
@@ -216,14 +236,14 @@ function GarageDB.uvo(oldOwnerId, newOwnerId, plate)
     local tpCitizenid = (tp.PlayerData and tp.PlayerData.citizenid) or tp.citizenid
     local mpCitizenid = (mp.PlayerData and mp.PlayerData.citizenid) or mp.citizenid
 
-    local update = MySQL.update.await("UPDATE player_vehicles SET license = ?, citizenid = ? WHERE citizenid = ? AND (plate = ? OR fakeplate = ?)", {
+    local update = pr_lib.database.update("UPDATE player_vehicles SET license = ?, citizenid = ? WHERE citizenid = ? AND (plate = ? OR fakeplate = ?)", {
         tpLicense,
         tpCitizenid,
         mpCitizenid,
         plate,
         plate
     })
-    return update > 0
+    return type(update) == 'number' and update > 0
 end
 
 --- Get Vehicle Owner By Plate
@@ -251,13 +271,13 @@ function GarageDB.gvobp(src, plate, filter, pleaseUpdate)
         value = {plate, plate, identifier}
     end
 
-    local results = MySQL.single.await(format, value)
+    local results = pr_lib.database.single(format, value)
     if not results then return false end
     local charinfo = json.decode(results.charinfo)
     local ownername = charinfo and ("%s %s"):format(charinfo.firstname, charinfo.lastname) or "Unknown Owner"
 
     if pleaseUpdate then
-        MySQL.update([[
+        pr_lib.database.update([[
             UPDATE
                 player_vehicles
                     SET
@@ -285,7 +305,7 @@ function GarageDB.gvfp(src)
     local citizenid = pr_lib.framework.GetIdentifier(src)
     if not citizenid then return {} end
 
-    local results = MySQL.query.await([[
+    local results = pr_lib.database.query([[
             SELECT
                 vehicle,
                 plate,
@@ -300,11 +320,10 @@ function GarageDB.gvfp(src)
 
     local vehicles = {}
     if results and results[1] then
-        local sharedData = getQBShared()
         for i=1, #results do
             local v = results[i]
             local plate = utils.string.trim(v.plate)
-            local vd = sharedData and sharedData.Vehicles[v.vehicle]
+            local vd = pr_lib.framework.GetVehicleData(v.vehicle)
             local brand = vd and vd.brand
             local name = vd and vd.name
             local defaultname = brand and ("%s %s"):format(brand, name)
@@ -356,7 +375,7 @@ end
 
 --- Insert new vehicle to database
 function GarageDB.inv(vehicle)
-    MySQL.insert.await('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, state) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+    pr_lib.database.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, state) VALUES (?, ?, ?, ?, ?, ?, ?)', {
         vehicle.license,
         vehicle.citizenid,
         vehicle.model,
@@ -373,7 +392,7 @@ function GarageDB.uvoByCitizenId(oldOwnerId, newCitizenId, plate)
     if not mp then return false, "player_offline" end
     local mpCitizenid = (mp.PlayerData and mp.PlayerData.citizenid) or mp.citizenid
 
-    local target = MySQL.single.await("SELECT citizenid, license, charinfo FROM players WHERE citizenid = ?", {newCitizenId})
+    local target = pr_lib.database.single("SELECT citizenid, license, charinfo FROM players WHERE citizenid = ?", {newCitizenId})
     if not target then
         return false, "citizenid_not_found"
     end
@@ -385,7 +404,7 @@ function GarageDB.uvoByCitizenId(oldOwnerId, newCitizenId, plate)
     -- Check if target player is online to notify them
     local tp = pr_lib.framework.GetPlayerFromIdentifier(newCitizenId)
 
-    local update = MySQL.update.await("UPDATE player_vehicles SET license = ?, citizenid = ? WHERE citizenid = ? AND (plate = ? OR fakeplate = ?)", {
+    local update = pr_lib.database.update("UPDATE player_vehicles SET license = ?, citizenid = ? WHERE citizenid = ? AND (plate = ? OR fakeplate = ?)", {
         tpLicense,
         newCitizenId,
         mpCitizenid,
@@ -393,7 +412,7 @@ function GarageDB.uvoByCitizenId(oldOwnerId, newCitizenId, plate)
         plate
     })
 
-    if update > 0 then
+    if type(update) == 'number' and update > 0 then
         if tp then
             local tpSource = (tp.PlayerData and tp.PlayerData.source) or tp.source
             utils.notify(tpSource, GarageBridge.locale("notify.success.transferveh.target", pr_lib.framework.GetPlayerName(oldOwnerId), ""), "success")
@@ -405,8 +424,8 @@ end
 
 --- Get Vehicles That Must Be Rendered Persistently
 function GarageDB.getPersistentVehicles(garageName)
-    local results = MySQL.query.await([[
-        SELECT plate, vehicle, vehicle_name, mods, deformation, fuel, engine, body, parking_coords
+    local results = pr_lib.database.query([[
+        SELECT id, plate, fakeplate, vehicle, vehicle_name, mods, deformation, fuel, engine, body, parking_coords
         FROM player_vehicles
         WHERE garage = ? AND state = 1 AND parking_coords IS NOT NULL
     ]], { garageName })
@@ -434,6 +453,6 @@ function GarageDB.getManagementVehicles(garageName, outsideOnly)
         params = { garageName }
     end
 
-    local results = MySQL.query.await(query, params)
+    local results = pr_lib.database.query(query, params)
     return results or {}
 end

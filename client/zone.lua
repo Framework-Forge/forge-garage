@@ -207,6 +207,12 @@ local function unloadKnownGarageIpls(exceptIpls)
 end
 
 local function unloadActiveGarageIpl()
+    if GarageVisualClient then
+        GarageVisualClient.cancel()
+        GarageVisualClient.reset(gzf.activeGarage)
+        GarageVisualClient.clearNpc()
+    end
+    gzf.activeGarage = nil
     unloadKnownGarageIpls()
     activeGarageIpl = nil
 end
@@ -264,6 +270,19 @@ local function loadGarageIpl(ipl)
 
     waitForGarageInteriors(list)
     activeGarageIpl = ipl
+    if GarageVisualClient then
+        GarageVisualClient.apply(gzf.activeGarage)
+        GarageVisualClient.syncNpc()
+    end
+end
+
+function gzf.setVisualGarage(name)
+    if GarageVisualClient then
+        GarageVisualClient.cancel()
+        if gzf.activeGarage ~= name then GarageVisualClient.reset(gzf.activeGarage) end
+    end
+    gzf.activeGarage = name
+    if GarageVisualClient then GarageVisualClient.apply(name); GarageVisualClient.syncNpc() end
 end
 
 function gzf.prepareIpl(ipl)
@@ -514,10 +533,16 @@ function gzf.authorize(key, val)
 end
 
 function gzf.refresh ()
+    if GarageVisualClient then GarageVisualClient.cancel() end
     if not GarageZone or type(GarageZone) ~= "table" then return end
 
     if activeGarageIpl then
-        loadGarageIpl(activeGarageIpl)
+        local garage = gzf.activeGarage and GarageZone[gzf.activeGarage]
+        if gzf.activeGarage and (not garage or not garage.ipl or not garage.ipl.enabled) then
+            unloadActiveGarageIpl()
+        else
+            loadGarageIpl(garage and garage.ipl.model or activeGarageIpl)
+        end
     else
         unloadActiveGarageIpl()
     end
@@ -577,6 +602,7 @@ function gzf.refresh ()
                                 if not floor or not floor.coords then return end
 
                                 runGarageTransition("Entrando na garagem...", function()
+                                    gzf.setVisualGarage(k)
                                     loadGarageIpl(v.ipl.model)
                                     TriggerServerEvent("forge_garage:server:setPlayerGarageBucket", v.ipl.bucket or 0)
                                     Wait(100)
@@ -699,6 +725,8 @@ function gzf.refresh ()
         local zoneOptions = {
             points = v.zones.points,
             thickness = v.zones.thickness,
+            minZ = v.zones.minZ,
+            maxZ = v.zones.maxZ,
         }
 
         local args = {
@@ -749,7 +777,7 @@ function gzf.refresh ()
             function zoneOptions:onExit()
                 stui = false
                 utils.drawtext('hide')
-                local id = Config.Target == "pr_bridge" and "open_garage" or "Open Garage"
+                local id = "open_garage"
                 utils.removeTargetPed(ped, id)
             end
         elseif v.interaction == "keypressed" then
@@ -865,6 +893,9 @@ function gzf.refresh ()
     end
     pcall(function()
         exports['forge-garage']:setupPersistentGarages()
+    end)
+    pcall(function()
+        exports['forge-garage']:setupParkingMeters()
     end)
 end
 

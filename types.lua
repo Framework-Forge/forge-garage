@@ -35,6 +35,17 @@
 ---@field floors? GarageIplFloor[] --- Interior floor points available when entering the IPL
 ---@field parkingSpots? GarageIplParkingSpot[] --- Interior parking interaction points
 ---@field allowVehicle? boolean --- Legacy vehicle access fallback
+---@field manager? GarageIplLayoutManager --- Player access point for the layout panel
+---@field visual? table<string, integer> --- Approved catalog option indices, persisted per garage
+---@field visualRevision? integer --- Optimistic concurrency revision
+
+---@class GarageIplLayoutManager
+---@field coords {x:number,y:number,z:number} --- DevTools placement coordinates; ped transform requires noOffset=false
+---@field model string --- NPC model
+---@field heading number --- NPC heading from DevTools
+---@field radius number --- NPC target distance, between 1 and 3 meters
+---@field access "public"|"residential"
+---@field propertyId? string --- ps-housing property; requires its authoritative access permission
 
 ---@class GarageIplEntry
 ---@field label string --- Friendly entry name

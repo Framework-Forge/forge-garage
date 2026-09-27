@@ -102,6 +102,8 @@
         "police_impound": {
             "veh_owner": "Pemilik Kendaraan",
             "veh_fine": "Denda",
+            "reason": "Alasan penyitaan",
+            "notes": "Catatan",
             "fine_header": "Hallo %s👋",
             "fine_content": "Anda diminta untuk membayar tagihan kendaraan Anda yang disita polisi sebesar $%s",
             "fine_pay": "Bayar",

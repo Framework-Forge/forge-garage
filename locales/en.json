@@ -102,6 +102,8 @@
         "police_impound": {
             "veh_owner": "Vehicle Owner",
             "veh_fine": "Fine",
+            "reason": "Impound reason",
+            "notes": "Notes",
             "fine_header": "Hello %s👋",
             "fine_content": "You are asked to pay the bill for your vehicle that was confiscated by the police in the amount of $%s",
             "fine_pay": "Pay",

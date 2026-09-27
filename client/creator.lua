@@ -5,7 +5,7 @@ local listGarage
 local garageParentMenu
 local garageParentResource
 
-local function buildGarageZone(points)
+local function buildGarageZone(points, bounds)
     if type(points) ~= 'table' or #points < 3 then return end
 
     local zonePoints = {}
@@ -14,9 +14,22 @@ local function buildGarageZone(points)
         zonePoints[index] = vec3(point.x, point.y, point.z)
     end
 
+    local minimumZ, maximumZ = math.huge, -math.huge
+    for index = 1, #zonePoints do
+        minimumZ = math.min(minimumZ, zonePoints[index].z)
+        maximumZ = math.max(maximumZ, zonePoints[index].z)
+    end
+
+    local thickness = tonumber(bounds and bounds.thickness) or 4.0
+    local minZ = tonumber(bounds and bounds.minZ) or (minimumZ - thickness * 0.5)
+    local maxZ = tonumber(bounds and bounds.maxZ) or (maximumZ + thickness * 0.5)
+    if minZ > maxZ then minZ, maxZ = maxZ, minZ end
+
     return {
         points = zonePoints,
-        thickness = 4.0,
+        minZ = minZ,
+        maxZ = maxZ,
+        thickness = maxZ - minZ,
     }
 end
 
@@ -68,8 +81,8 @@ local function createGarage ()
         minPoints = 3,
         wallHeight = 4.0,
         freezePlayer = true,
-    }, function(points)
-        local zones = buildGarageZone(points)
+    }, function(points, bounds)
+        local zones = buildGarageZone(points, bounds)
         if not zones then
             listGarage()
             return
@@ -348,6 +361,7 @@ local function createGarageIpl()
             { value = "keypressed", label = "Usando Tecla E" },
             { value = "targetped",  label = "Usando NPC com Target" }
         }, required = false},
+        { type = 'checkbox', label = "Cobrar estacionamento por parquimetro (requer persistencia)" },
     })
 
     if not input then
@@ -361,6 +375,12 @@ local function createGarageIpl()
     local shared = input[5]
     local useIpl = input[8] and true or false
     local persist = useIpl and true or input[7]
+    local metered = input[10] == true
+    if metered and not persist then
+        utils.notify('Parquimetros exigem persistencia.', 'error')
+        listGarage()
+        return
+    end
     local blip = input[3] and blipInput(impound, label) or nil
 
     if useIpl or persist then
@@ -394,6 +414,10 @@ local function createGarageIpl()
             }
         }
 
+        if metered then
+            GarageZone[label].parking = { enabled = false, requested = true, meters = {} }
+            utils.notify('Configure a cobranca e escolha usar parquimetros do mapa ou posicionar pontos de pagamento.', 'info', 9000)
+        end
         gzf.save(GarageZone)
         utils.notify(GarageBridge.locale("notify.admin.success_create", label:upper()), "success")
         utils.notify("Entrada principal de seguranca criada na sua posicao atual.", "inform", 8000)
@@ -405,15 +429,15 @@ local function createGarageIpl()
         minPoints = 3,
         wallHeight = 4.0,
         freezePlayer = true,
-    }, function(points)
-            local createdZone = buildGarageZone(points)
+    }, function(points, bounds)
+            local createdZone = buildGarageZone(points, bounds)
             if not createdZone then
                 listGarage()
                 return
             end
 
             local tPed = not persist and input[9] == 'targetped'
-            local sp = input[6] and spawnPoint.create(createdZone, false, nil, gtype) or nil ---@type table<string, vector3[]|string[]>
+            local sp = (input[6] or metered) and spawnPoint.create(createdZone, true, nil, gtype) or nil ---@type table<string, vector3[]|string[]>
             local interact = not persist and (tPed and pedcreator.start(createdZone) or input[9]) or nil
 
             if tPed and not sp then
@@ -433,6 +457,10 @@ local function createGarageIpl()
                 interaction = interact
             }
 
+            if metered then
+                GarageZone[label].parking = { enabled = false, requested = true, meters = {} }
+                GarageParkingEditor.configure(label)
+            end
             gzf.save(GarageZone)
             utils.notify(GarageBridge.locale("notify.admin.success_create", label:upper()), "success")
             listGarage()
@@ -578,8 +606,8 @@ local function createPropertyGarage(options, callback)
         minPoints = 3,
         wallHeight = wallHeight,
         freezePlayer = true,
-    }, function(points)
-        local zone = buildGarageZone(points)
+    }, function(points, bounds)
+        local zone = buildGarageZone(points, bounds)
         if not zone then
             finishPropertyGarageCreation(callback, propertyGarageResult(false, "cancelled", "Demarcacao cancelada.", {
                 cancelled = true,
@@ -587,8 +615,6 @@ local function createPropertyGarage(options, callback)
             }))
             return
         end
-
-        zone.thickness = wallHeight
 
         local spots = nil
         if positionVehicles then
@@ -717,6 +743,8 @@ local function serializePropertyGarageDraft(draft)
         zones = {
             points = points,
             thickness = tonumber(zones.thickness) or 4.0,
+            minZ = tonumber(zones.minZ),
+            maxZ = tonumber(zones.maxZ),
         },
         impound = false,
         shared = false,
@@ -837,8 +865,8 @@ local function changeLocation(self)
         minPoints = 3,
         wallHeight = 4.0,
         freezePlayer = true,
-    }, function(points)
-            local Zones = buildGarageZone(points)
+    }, function(points, bounds)
+            local Zones = buildGarageZone(points, bounds)
             if not Zones then
                 returnToContext(self.returnMenu)
                 return
@@ -1005,6 +1033,13 @@ local function applyIplModel(self)
         return
     end
 
+    if formatIplName(data.model) ~= formatIplName(selected.ipl) then
+        GarageVisualClient.cancel()
+        GarageVisualClient.reset(self.k)
+        if data.manager then utils.notify('Modelo alterado: reposicione o painel de layout no novo interior.', 'inform') end
+        data.manager, data.visual = nil, nil
+        data.visualRevision = (data.visualRevision or 0) + 1
+    end
     data.label = selected.label
     data.model = selected.ipl
     data.preview = selected.preview
@@ -1018,8 +1053,9 @@ local function applyIplModel(self)
     end
     gzf.save(GarageZone)
 
+    gzf.setVisualGarage(self.k)
     if selected.preview then
-        teleportToIplPoint({ coords = selected.preview, bucket = data.bucket, ipl = data.model })
+        teleportToIplPoint({ garage = self.k, coords = selected.preview, bucket = data.bucket, ipl = data.model })
     elseif not prepareGarageIpl(data.model) then
         returnToContext(self.returnMenu)
         return
@@ -1252,6 +1288,7 @@ local function setIplParkingSpot(self)
         }
     end
 
+    GarageParkingEditor.afterSpots(self.k)
     gzf.save(GarageZone)
     utils.notify("Vagas IPL atualizadas com sucesso.", "success")
     returnToContext(self.returnMenu)
@@ -1282,7 +1319,7 @@ local function listIplParkingSpots(self)
             icon = "location-dot",
             description = ("Raio: %sm"):format(spot.radius or 3.0),
             onSelect = teleportToIplPoint,
-            args = { coords = spot.coords, bucket = data.bucket, ipl = data.model, returnMenu = contextId }
+            args = { garage = self.k, coords = spot.coords, bucket = data.bucket, ipl = data.model, returnMenu = contextId }
         }
     end
 
@@ -1343,7 +1380,7 @@ local function openIplFloorActions(self)
                 icon = "location-dot",
                 description = "Carrega o IPL e teleporta para este elevador interno.",
                 onSelect = teleportToIplPoint,
-                args = { coords = floor.coords, bucket = data.bucket, ipl = data.model, returnMenu = contextId }
+                args = { garage = self.k, coords = floor.coords, bucket = data.bucket, ipl = data.model, returnMenu = contextId }
             },
             {
                 title = "Apagar Andar",
@@ -1562,7 +1599,7 @@ local function listIplTeleports(self)
             icon = "layer-group",
             description = "Interior | " .. accessModeLabel(floor.mode),
             onSelect = teleportToIplPoint,
-            args = { coords = floor.coords, bucket = data.bucket, ipl = data.model, returnMenu = contextId }
+            args = { garage = self.k, coords = floor.coords, bucket = data.bucket, ipl = data.model, returnMenu = contextId }
         }
     end
 
@@ -1599,6 +1636,7 @@ function teleportToIplPoint(self)
     NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 50.0, 0)
 
     if self.ipl then
+        gzf.setVisualGarage(self.garage)
         prepareGarageIpl(self.ipl, coords)
     elseif self.unloadIpl then
         unloadGarageIpl()
@@ -1636,6 +1674,128 @@ local function toggleIplVehicleAccess(self)
     utils.notify("Entrada com veiculo alterada.", "success")
 end
 
+local function visualManagerOptions(self)
+    local k = self.k
+    local data = ensureIplData(k)
+    local manager = GarageVisual.manager(data.manager)
+    local catalog = GarageVisual.catalog(data)
+    local floor = data.floors and data.floors[1]
+    local interiorPoint = floor and (floor.coords or floor) or data.preview
+    local id = 'rhd:ipl_visual_config_' .. k
+    local function reopen() visualManagerOptions({ k = k }) end
+    local function save(value)
+        local result = GarageBridge.callback.await('forge_garage:visual:configure', false, k, value)
+        if result and result.success then
+            GarageZone[k].ipl.manager = value or nil
+            gzf.refresh()
+            gzf.setVisualGarage(k)
+        end
+        utils.notify(result and result.message or 'Não foi possível salvar.', result and result.success and 'success' or 'error')
+        reopen()
+    end
+    local function configure(position)
+        local input = pr_lib.inputDialog('Acesso ao gerenciador', {
+            { type = 'select', label = 'Quem pode alterar o visual?', required = true,
+                default = manager and manager.access or 'public', options = {
+                    { value = 'public', label = 'Público — usuários da garagem' },
+                    { value = 'residential', label = 'Residencial — moradores autorizados' },
+                } },
+        })
+        if not input then return reopen() end
+        local propertyId
+        if input[1] == 'residential' then
+            local rows = GarageBridge.callback.await('forge_garage:visual:properties', false) or {}
+            local properties = {}
+            for _, row in ipairs(rows) do
+                properties[#properties+1] = { value = tostring(row.property_id), label = ('Imóvel %s — %s'):format(row.property_id, row.street or '') }
+            end
+            if #properties == 0 then
+                utils.notify('Nenhum imóvel disponível no ps-housing.', 'error')
+                return reopen()
+            end
+            local selected = pr_lib.inputDialog('Vincular residência', {
+                { type = 'select', label = 'Imóvel', options = properties, searchable = true, required = true, default = manager and manager.propertyId }
+            })
+            if not selected then return reopen() end
+            propertyId = selected[1]
+        end
+        if not position and manager then
+            manager.access, manager.propertyId = input[1], propertyId
+            return save(manager)
+        end
+        local models, seen = {}, {}
+        local function addModel(model)
+            if type(model) ~= 'string' or seen[model] then return end
+            local hash = joaat(model)
+            if IsModelInCdimage(hash) and IsModelAPed(hash) then
+                seen[model] = true
+                models[#models+1] = { value = model, label = model }
+            end
+        end
+        addModel(manager and manager.model or 'a_m_m_business_01')
+        for _, model in ipairs(GarageBridge.loadJson('data.peds') or {}) do addModel(model) end
+        local selected = pr_lib.inputDialog('NPC do painel de layout', {
+            { type = 'select', label = 'Modelo do NPC', options = models, searchable = true, required = true,
+                default = manager and manager.model or 'a_m_m_business_01' },
+            { type = 'number', label = 'Distância de interação', default = manager and manager.radius or 2.0, min = 1, max = 3, precision = 1, required = true },
+        })
+        if not selected then return reopen() end
+        GarageVisualClient.editNpc(true)
+        utils.notify('Posicione e gire o NPC no interior. Clique para fixar e ENTER para salvar.', 'inform')
+        local finished = false
+        local function finish(placement)
+            if finished then return end
+            finished = true
+            local value = placement and GarageVisual.pedPlacement(placement, input[1], propertyId, selected[2])
+            if value then
+                save(value)
+            else
+                if placement then utils.notify('Posicionamento do NPC inválido.', 'error') end
+                reopen()
+            end
+            GarageVisualClient.editNpc(false)
+        end
+        local started = pr_lib.devtools.placePed(selected[1], 1, finish, {
+            preview = true, freezePlayer = true, heading = manager and manager.heading or 0.0,
+            heightOffset = 0.0, heightStep = 0.01, modelTimeout = 5000,
+        })
+        if not started then finish(nil) end
+    end
+    utils.createMenu({ id = id, title = 'Painel de layout — ' .. k, menu = 'rhd:ipl_settings_' .. k, options = {
+        { title = 'Ir ao interior para posicionar', icon = 'warehouse', disabled = not interiorPoint,
+            description = 'Teleporta ao primeiro elevador interno ou ao preview do modelo.',
+            onSelect = function()
+                teleportToIplPoint({ garage = k, coords = interiorPoint, ipl = data.model, bucket = data.bucket, returnMenu = id })
+                gzf.setVisualGarage(k)
+            end },
+        { title = manager and 'Mover / trocar NPC do painel' or 'Criar NPC do painel', icon = 'location-dot', disabled = not catalog,
+            description = catalog and 'Modelo, posição e rotação com preview no DevTools do PR Bridge.' or 'Este modelo ainda não possui variações cadastradas.',
+            onSelect = function() configure(true) end },
+        { title = 'Editar acesso do painel', icon = 'key', disabled = not manager,
+            description = manager and (manager.access == 'residential' and ('Residencial — imóvel ' .. manager.propertyId) or 'Público — usuários da garagem'),
+            onSelect = function() configure(false) end },
+        { title = 'Teleportar ao ponto do painel', icon = 'person-walking', disabled = not manager,
+            onSelect = function()
+                -- Stand beside the NPC rather than teleporting inside its collision.
+                local heading = math.rad(manager.heading)
+                local coords = { x = manager.coords.x + math.cos(heading) * 1.2,
+                    y = manager.coords.y + math.sin(heading) * 1.2, z = manager.coords.z, w = manager.heading }
+                teleportToIplPoint({ garage = k, coords = coords, ipl = data.model, bucket = data.bucket, returnMenu = id })
+                gzf.setVisualGarage(k)
+            end },
+        { title = 'Abrir e pré-visualizar aparência', icon = 'palette', disabled = not manager or not catalog,
+            description = 'Use estando próximo do ponto configurado.',
+            onSelect = function()
+                GarageVisualClient.open(k, id)
+            end },
+        { title = 'Remover ponto do painel', icon = 'trash', disabled = not manager,
+            onSelect = function()
+                local answer = pr_lib.alertDialog({ header = 'Remover gerenciador?', content = 'O visual salvo será mantido.', cancel = true })
+                if answer == 'confirm' then save(false) else reopen() end
+            end },
+    } })
+end
+
 local function iplOptions(self)
     local k, v = self.k, self.v
     local data = ensureIplData(k)
@@ -1670,6 +1830,13 @@ local function iplOptions(self)
                 description = ("Criar e visualizar vagas | Total: %s"):format(#(data.parkingSpots or {})),
                 onSelect = listIplParkingSpots,
                 args = { k = k, parentMenu = contextId }
+            },
+            {
+                title = "Painel de layout",
+                icon = "palette",
+                description = data.manager and "Ponto configurado: acesso, acabamento e cores do IPL." or "Configurar ponto de acesso público ou residencial.",
+                onSelect = visualManagerOptions,
+                args = { k = k }
             },
             {
                 title = "Teleportes de Configuracao",
@@ -1757,6 +1924,7 @@ local function setspawnpoint(self)
             end
             GarageZone[k].spawnPoint = pr.c
             GarageZone[k].spawnPointVehicle = pr.v
+            GarageParkingEditor.afterSpots(k)
             utils.notify("The spawn point has been successfully set", "success", 8000)
             gzf.save(GarageZone)
             setspawnpoint({ k = k, v = GarageZone[k], returnMenu = self.returnMenu })
@@ -1910,7 +2078,7 @@ local function setVehicles(garage)
     local key = garage.index
     local value = garage.value
 
-    local vehicles = exports.qbx_core:GetVehiclesByHash()
+    local vehicles = pr_lib.framework.GetVehiclesByHash()
 
     local options = {}
     for k, v in pairs(vehicles) do
@@ -1952,6 +2120,12 @@ local function setVehicles(garage)
         gzf.save( GarageZone )
     end
     returnToContext(garage.returnMenu)
+end
+
+local function configureParkingMeters(args)
+    GarageParkingEditor.configure(args.k)
+    gzf.save(GarageZone)
+    returnToContext(args.returnMenu)
 end
 
 local function editGarageSettings(args)
@@ -2001,6 +2175,34 @@ local function editGarageSettings(args)
                     reopenSettings()
                     utils.notify("Configuração de persistência alterada!", "success")
                 end
+            },
+            {
+                title = 'Retorno automatico ao estacionamento',
+                icon = 'bi bi-clock-history',
+                disabled = not v.persist,
+                description = 'Prazo apos destrancar sem sair: '..tostring(v.persistenceCooldownSeconds or (v.parking and v.parking.exitCooldownSeconds) or 120)..' segundos.',
+                onSelect = function()
+                    local input=pr_lib.inputDialog('Retorno da persistencia',{
+                        {type='number',label='Prazo apos destrancar (segundos)',required=true,min=10,max=86400,
+                            default=v.persistenceCooldownSeconds or (v.parking and v.parking.exitCooldownSeconds) or 120,
+                            description='Volta a estacionado somente se continuar parado no local; nao ativa cobranca.'}
+                    })
+                    if input then
+                        GarageZone[k].persistenceCooldownSeconds=input[1]
+                        gzf.save(GarageZone)
+                    end
+                    reopenSettings()
+                end
+            },
+            {
+                title = 'Parquimetros',
+                icon = 'square-parking',
+                disabled = not v.persist,
+                description = v.persist and 'Configure a cobranca, os modelos e os parquimetros desta garagem.'
+                    or 'Ative a persistencia de veiculos antes de usar parquimetros.',
+                onSelect = function()
+                    configureParkingMeters({ k = k, returnMenu = 'rhd:edit_settings_' .. k })
+                end,
             },
             {
                 title = "Categorias de Veículos",

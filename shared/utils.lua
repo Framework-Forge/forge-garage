@@ -129,62 +129,26 @@ function utils.destroyPreviewCam(vehicle, enterVehicle)
 end
 
 function utils.createTargetPed(model, coords, options)
-    local newoptions = {}
-    local qbtd = nil --- qb-target distance options
-    
     GarageBridge.requestModel(model, 150000)
     local ped = CreatePed(0, model, coords.x, coords.y, coords.z - 1, coords.w, false, false)
     SetEntityInvincible(ped, true)
     SetBlockingOfNonTemporaryEvents(ped, true)
     FreezeEntityPosition(ped, true)
 
-    if type(options) == "table" and #options > 0 then
-        for i=1, #options do
-            local data = options[i]
-            local opt = {
-                name = data.name,
-                label = data.label,
-                icon = data.icon,
-            }
-            if Config.Target == "pr_bridge" then
-                opt.groups = data.groups
-                opt.distance = data.distance
-                opt.onSelect = data.action
-            elseif Config.Target == "qb" then
-                opt.job = data.groups
-                opt.gang = data.groups
-                opt.action = data.action
-            end
-            qbtd = data.distance
-            newoptions[#newoptions+1] = opt
-        end
+    local targets = {}
+    for _, data in ipairs(options or {}) do
+        targets[#targets + 1] = {
+            name = data.name, label = data.label, icon = data.icon,
+            groups = data.groups, distance = data.distance, onSelect = data.action,
+        }
     end
-
-    if #newoptions > 0 then
-        if Config.Target == "pr_bridge" then
-            pr_lib.ox_target:addLocalEntity(ped, newoptions)
-        elseif Config.Target == "qb" then
-            local param = {
-                options = newoptions,
-                distance = qbtd
-            }
-            exports['qb-target']:AddTargetEntity(ped, param)
-        end
-    end
-
+    if #targets > 0 then pr_lib.target.addLocalEntity(ped, targets) end
     return ped
 end
 
-function utils.removeTargetPed(entity, label)
-    if DoesEntityExist(entity) then
-        if Config.Target == "pr_bridge" then
-            pr_lib.ox_target:removeLocalEntity(entity, label)
-            DeleteEntity(entity)
-        elseif Config.Target == "qb" then
-            exports['qb-target']:RemoveTargetEntity(entity, label)
-            DeleteEntity(entity)
-        end
-    end
+function utils.removeTargetPed(entity, name)
+    pr_lib.target.removeLocalEntity(entity, name)
+    if DoesEntityExist(entity) then DeleteEntity(entity) end
 end
 
 function utils.getColorLevel(level)
@@ -211,23 +175,11 @@ end
 
 
 function utils.setFuel(vehicle, fuel)
-    Wait(100)
-    if Config.FuelScript == "ox_fuel" then
-        Entity(vehicle).state.fuel = fuel or 100
-    else
-        exports[Config.FuelScript]:SetFuel(vehicle, fuel or 100)
-    end
+    return pr_lib.fuel.SetFuel(vehicle, fuel or 100)
 end
 
 function utils.getFuel(vehicle)
-    local fuelLevel = 0
-    if Config.FuelScript == "ox_fuel" then
-        local state = Entity(vehicle).state
-        fuelLevel = state and state.fuel or 100 
-    else
-        fuelLevel = exports[Config.FuelScript]:GetFuel(vehicle)
-    end
-    return fuelLevel
+    return pr_lib.fuel.GetFuel(vehicle)
 end
 
 function utils.createPlyVeh ( model, coords, cb, network, props )
@@ -239,12 +191,23 @@ function utils.createPlyVeh ( model, coords, cb, network, props )
     end
     local veh = NetworkGetEntityFromNetworkId(netid)
     local timeout = 0
-    while (not veh or veh == 0 or not DoesEntityExist(veh)) and timeout < 100 do
+    while (not veh or veh == 0 or not DoesEntityExist(veh)) and timeout < 1000 do
         Wait(10)
         veh = NetworkGetEntityFromNetworkId(netid)
         timeout = timeout + 1
     end
     if veh and veh ~= 0 and DoesEntityExist(veh) then
+        -- Server delivery may precede streaming/ownership; confirm saved tuning locally.
+        if type(props) == 'table' then
+            local expires = GetGameTimer() + 5000
+            while not NetworkHasControlOfEntity(veh) and GetGameTimer() < expires do
+                NetworkRequestControlOfEntity(veh)
+                Wait(50)
+            end
+            if not NetworkHasControlOfEntity(veh) or not GarageBridge.setVehicleProperties(veh, props) then
+                error('Nao foi possivel aplicar as modificacoes salvas do veiculo.')
+            end
+        end
         SetVehicleHasBeenOwnedByPlayer(veh, true)
         SetVehicleNeedsToBeHotwired(veh, false)
         SetVehRadioStation(veh, 'OFF')
@@ -321,21 +284,38 @@ function utils.JobCheck ( data )
     return allowed
 end
 
-local QBShared = nil
 function utils.getVehicleLabel(model)
-    if not QBShared then
-        local QBCore = exports['qb-core']:GetCoreObject()
-        if QBCore then
-            QBShared = QBCore.Shared
-        end
+    -- Stored vehicle properties may be a table; natives require a model hash.
+    if type(model) == 'table' then
+        model = model.model or model.hash or model.vehicle
     end
-    local vd = QBShared and QBShared.Vehicles[model]
+    if type(model) ~= 'number' and type(model) ~= 'string' then return 'Veiculo' end
+    local vd = pr_lib.framework.GetVehicleData(model)
+    model = tonumber(model) or joaat(model)
     local makename = GetMakeNameFromVehicleModel(model)
     local displayname = GetDisplayNameFromVehicleModel(model)
 
     local vm = vd and vd.brand or makename
     local vn = vd and vd.name or displayname
     return ("%s %s"):format(vm, vn)
+end
+
+-- Use the registration for keys and persistence, and the current plate for rendering.
+function utils.vehicleDisplayPlate(data)
+    local fake = type(data.fakeplate) == 'string' and data.fakeplate:match('^%s*(.-)%s*$') or ''
+    return fake ~= '' and fake or data.plate
+end
+
+function utils.applyVehicleIdentity(vehicle, data)
+    local original = type(data.plate) == 'string' and data.plate:gsub('%s+', ''):upper() or nil
+    if not original or original == '' then return end
+    local displayed = utils.vehicleDisplayPlate(data)
+    local fake = displayed and displayed:gsub('%s+', ''):upper() or original
+    if fake == original then fake = nil end
+    local state = Entity(vehicle).state
+    state:set('garageVehicleIdentity', { originalPlate = original, fakePlate = fake, vehicleId = tonumber(data.id) }, true)
+    state:set('originalPlate', original, true)
+    state:set('fakePlate', fake, true)
 end
 
 if server then

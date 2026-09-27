@@ -94,6 +94,8 @@
         "police_impound": {
             "veh_owner": "Proprietário do Veículo",
             "veh_fine": "Multa",
+            "reason": "Motivo da apreensão",
+            "notes": "Observações",
             "fine_header": "Olá %s👋",
             "fine_content": "Você é solicitado a pagar a fatura do seu veículo que foi confiscado pela polícia no valor de $%s",
             "fine_pay": "Pagar",

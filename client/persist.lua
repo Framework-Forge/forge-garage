@@ -478,6 +478,27 @@ local function registerStoredPersistentVehicle(plate, netId, veh)
 end
 exports('registerStoredPersistentVehicle', registerStoredPersistentVehicle)
 
+RegisterNetEvent('forge_garage:client:restoreMeterParking',function(plate,netId,garage)
+    if source~=65535 then return end
+    local key=normalizePlate(plate)
+    if not key then return end
+    setPersistentUnlocked(plate,false)
+    setPersistentDetached(plate,false)
+    withdrawingPlates[key]=nil
+    driverKeyCache[key]=nil
+    if not NetworkDoesNetworkIdExist(netId) then return end
+    local veh=NetToVeh(netId)
+    if veh==0 or not DoesEntityExist(veh) or normalizePlate(GetVehicleNumberPlateText(veh))~=key then return end
+    registerStoredPersistentVehicle(plate,netId,veh)
+    local state=Entity(veh).state
+    state:set('isPersistent',true,false)
+    state:set('garageName',garage,false)
+    SetVehicleDoorsLocked(veh,2)
+    FreezeEntityPosition(veh,true)
+    SetVehicleEngineOn(veh,false,true,true)
+    SetVehicleHandbrake(veh,true)
+end)
+
 function getPersistentVehicleEntity(plate)
     local key = normalizePlate(plate)
     local veh = spawnedPlates[plate]
@@ -610,7 +631,8 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
             if isRevvingVehicle(data.plate, existingVeh, NetworkGetNetworkIdFromEntity(existingVeh)) then
                 goto continue
             end
-            enforceVehiclePlate(existingVeh, data.plate)
+            enforceVehiclePlate(existingVeh, utils.vehicleDisplayPlate(data))
+            utils.applyVehicleIdentity(existingVeh, data)
             Entity(existingVeh).state:set('plate', data.plate, true)
             Entity(existingVeh).state:set('pr_carkeys_skipRevPed', true, true)
             -- Map it in local arrays and register in shared cache
@@ -665,11 +687,14 @@ RegisterNetEvent('forge_garage:client:spawnPersistent', function(garageName, veh
                     if DoesEntityExist(veh) then
                         local mods = type(data.mods) == 'table' and data.mods or json.decode(data.mods)
                         if mods then
+                            -- Saved properties may predate installation/removal of the fake plate.
+                            mods.plate = utils.vehicleDisplayPlate(data)
                             pcall(function()
                                 GarageBridge.setVehicleProperties(veh, mods)
                             end)
                         end
-                        enforceVehiclePlate(veh, data.plate)
+                        enforceVehiclePlate(veh, utils.vehicleDisplayPlate(data))
+                        utils.applyVehicleIdentity(veh, data)
 
                         if data.fuel then
                             SetVehicleFuelLevel(veh, tonumber(data.fuel) + 0.0)

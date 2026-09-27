@@ -238,9 +238,9 @@ end
 exports('openKeyManagerMenu', openKeyManagerMenu)
 
 -- Register a helper slash command to easily test/open it
-RegisterCommand('keymanager', function()
+pr_lib.addCommand('keymanager', { help = 'Gerenciar chaves e transferencia de veiculos' }, function()
     openKeyManagerMenu()
-end, false)
+end)
 
 -- Buyer payment callback
 GarageBridge.callback.register('forge_garage:cb_client:requestPayment', function(sellerName, vehPlate, vehName, price, taxActive, taxAmount)

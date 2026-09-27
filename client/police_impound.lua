@@ -16,7 +16,11 @@ end
 local function spawnvehicle ( data )
     local vehData = GarageBridge.callback.await('forge_garage:cb_server:getvehiclePropByPlate', false, data.plate)
     if not vehData then return error('Failed to load vehicle data with number plate ' .. data.plate) end
+    -- Legal release restores the registration even if saved mods contain a fake plate.
+    if type(vehData.mods) == 'table' then vehData.mods.plate = vehData.plate end
     local vehEntity = utils.createPlyVeh(vehData.model, data.coords, false, true, vehData.mods)
+    SetVehicleNumberPlateText(vehEntity, vehData.plate)
+    utils.applyVehicleIdentity(vehEntity, { id = vehData.id, plate = vehData.plate })
     SetVehicleOnGroundProperly(vehEntity)
     if Config.SpawnInVehicle then TaskWarpPedIntoVehicle(GarageBridge.cache.ped, vehEntity, -1) end
     SetVehicleEngineHealth(vehEntity, vehData.engine + 0.0)
@@ -55,6 +59,8 @@ local function openpoliceImpound ( garage )
             local fine = v.fine
             local paid = v.paid
             local date = v.date
+            local reason = v.reason
+            local notes = v.notes
 
             local paidstatus = GarageBridge.locale("context.policeImpound.not_paid")
 
@@ -69,6 +75,8 @@ local function openpoliceImpound ( garage )
                     OWNER = owner,
                     OFFICER = officer,
                     ['PICKUP DATE'] = date,
+                    [GarageBridge.locale('input.police_impound.reason')] = reason or '-',
+                    [GarageBridge.locale('input.police_impound.notes')] = notes or '-',
                 },
                 iconAnimation = Config.IconAnimation,
                 onSelect = function ()
@@ -98,6 +106,8 @@ local function openpoliceImpound ( garage )
                                     OWNER = owner,
                                     OFFICER = officer,
                                     ['PICKUP DATE'] = date,
+                                    [GarageBridge.locale('input.police_impound.reason')] = reason or '-',
+                                    [GarageBridge.locale('input.police_impound.notes')] = notes or '-',
                                 },
                                 readOnly = true
                             }
@@ -215,9 +225,11 @@ local function impoundVehicle (vehicle)
 
     local input = pr_lib.inputDialog(("%s [%s]"):format(vehlabel, plate:upper()), {
         { type = 'input', label = GarageBridge.locale('input.police_impound.veh_owner'), placeholder = ownerName:upper(), disabled = true },
-        { type = 'number', label = GarageBridge.locale('input.police_impound.fine'), required = true, default = 10000, min = 1, max = 1000000 },
+        { type = 'input', label = GarageBridge.locale('input.police_impound.reason'), required = true, min = 3, max = 100 },
+        { type = 'number', label = GarageBridge.locale('input.police_impound.veh_fine'), required = true, default = 10000, min = 0, max = 1000000 },
         { type = 'select', label = GarageBridge.locale('input.police_impound.confiscate_garage_loc'), options = garageList, default = garageList[1] },
-        { type = 'date', label = GarageBridge.locale('input.police_impound.confiscate_until'), icon = {'far', 'calendar'}, default = true, format = "DD/MM/YYYY" }
+        { type = 'date', label = GarageBridge.locale('input.police_impound.confiscate_until'), icon = {'far', 'calendar'}, default = true, format = "DD/MM/YYYY" },
+        { type = 'textarea', label = GarageBridge.locale('input.police_impound.notes'), required = false, min = 0, max = 500, autosize = true }
     })
 
     if input then
@@ -225,12 +237,14 @@ local function impoundVehicle (vehicle)
             citizenid = ownerCitizenid,
             owner = ownerName,
             officer = officerName,
-            fine = input[2],
-            garage = input[3],
+            reason = input[2],
+            fine = input[3],
+            garage = input[4],
             prop = vehprop,
             plate = plate,
             vehicle = vehlabel,
-            date =  math.floor(input[4] / 1000),
+            date = math.floor(input[5] / 1000),
+            notes = input[6],
             deformation = Deformation.get(vehicle)
         }
 
@@ -267,9 +281,13 @@ local function impoundVehicle (vehicle)
         })
         then
             GarageBridge.callback('forge_garage:cb_server:policeImpound.impoundveh', false, function ( success )
+                if not success then
+                    utils.notify('Nao foi possivel registrar a apreensao. Tente novamente.', 'error')
+                    return
+                end
                 SetEntityAsMissionEntity(vehicle, true, true)
                 DeleteVehicle(vehicle)
-                utils.notify(GarageBridge.locale('notify.success.confiscate_vehicle', ownerName, input[3]), "success")
+                utils.notify(GarageBridge.locale('notify.success.confiscate_vehicle', ownerName, input[4]), "success")
             end, sendToServer)
 
             ClearPedTasks(GarageBridge.cache.ped)
@@ -280,50 +298,17 @@ local function impoundVehicle (vehicle)
 end
 
 local function setUpTarget ( )
-    local bones = {
-        'door_dside_f',
-        'seat_dside_f',
-        'door_pside_f',
-        'seat_pside_f',
-        'door_dside_r',
-        'seat_dside_r',
-        'door_pside_r',
-        'seat_pside_r',
-        'bonnet',
-        'boot'
-    }
-
     local TargetData = Config.PoliceImpound.Target
-    local TargetLable = GarageBridge.locale('target.confiscate_veh')
-
-    if Config.Target == "pr_bridge" then
-        pr_lib.ox_target:addGlobalVehicle({
-            {
-                label = TargetLable,
-                icon = 'fas fa-car',
-                -- bones = bones,
-                groups = TargetData.groups,
-                onSelect = function (data)
-                    impoundVehicle(data.entity)
-                end,
-                distance = 2.5
-            }
-        })
-    elseif Config.Target == "qb" then
-        exports['qb-target']:AddTargetBone(bones, {
-            options = {
-                [TargetLable] = {
-                    icon = 'fas fa-car',
-                    label = TargetLable,
-                    action = function(veh)
-                        impoundVehicle(veh)
-                    end,
-                    job = TargetData.groups,
-                    distance = 1.5
-                }
-            }
-        })
-    end
+    pr_lib.target.addGlobalVehicle({
+        {
+            name = 'forge_garage:impound',
+            label = GarageBridge.locale('target.confiscate_veh'),
+            icon = 'fas fa-car',
+            groups = TargetData.groups,
+            onSelect = function(data) impoundVehicle(data.entity) end,
+            distance = 2.5,
+        }
+    })
 end
 
 --- Client Callback
@@ -433,6 +418,8 @@ CreateThread(function()
             GarageBridge.zones.poly({
                 points  = v.zones.points,
                 thickness = v.zones.thickness,
+                minZ = v.zones.minZ,
+                maxZ = v.zones.maxZ,
                 onEnter = function ()
                     if utils.JobCheck({ job = Target.groups}) then
 
