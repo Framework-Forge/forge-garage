@@ -62,8 +62,13 @@ local function policeDestination(name)
     end
 end
 local fields = 'vehicle, plate, garage, fuel, engine, body, state, paymentsleft'
+local function phoneOwner(src)
+    return pr_lib.phone and pr_lib.phone.GetActiveOwnerIdentifier
+        and pr_lib.phone.GetActiveOwnerIdentifier(src)
+        or nil
+end
 local function owned(src, plate)
-    local citizenid = pr_lib.framework.GetIdentifier(src)
+    local citizenid = phoneOwner(src)
     plate = clean(plate)
     if not citizenid or not plate then return nil end
     local row = db.single("SELECT "..fields.." FROM player_vehicles WHERE citizenid=? AND (UPPER(REPLACE(plate,' ',''))=? OR UPPER(REPLACE(fakeplate,' ',''))=?) LIMIT 1", {citizenid,plate,plate})
@@ -157,7 +162,7 @@ local function fines(src, plate)
     return list, warnings
 end
 function GaragePhoneList(src)
-    local citizenid = pr_lib.framework.GetIdentifier(src)
+    local citizenid = phoneOwner(src)
     if not citizenid then return {} end
     local rows = db.query('SELECT '..fields..' FROM player_vehicles WHERE citizenid=? ORDER BY plate', {citizenid}) or {}
     local result = {}
@@ -165,7 +170,7 @@ function GaragePhoneList(src)
         local custody = tonumber(row.state)==2 and impound(clean(row.plate)) or nil
         result[#result+1] = describe(src,row,custody)
     end
-    if pr_lib.framework.GetIdentifier(src) ~= citizenid then return {} end
+    if phoneOwner(src) ~= citizenid then return {} end
     return result
 end
 pr_lib.callback.register('forge_garage:phone:details',function(src, plate)
@@ -173,14 +178,14 @@ pr_lib.callback.register('forge_garage:phone:details',function(src, plate)
     if not row then return {status='error',message='Veículo não encontrado ou não pertence ao personagem.'} end
     local data = describe(src,row,tonumber(row.state)==2 and impound(clean(row.plate)) or nil)
     data.fines,data.warnings = fines(src,data.plate)
-    if pr_lib.framework.GetIdentifier(src) ~= citizenid then return {status='error',message='Personagem alterado. Atualize a lista.'} end
+    if phoneOwner(src) ~= citizenid then return {status='error',message='Aparelho ativo alterado. Atualize a lista.'} end
     return {status='ok',data=data}
 end)
 pr_lib.callback.register('forge_garage:phone:route',function(src, plate)
     local row, citizenid = owned(src,plate)
     if not row then return {status='error',message='Veículo não encontrado ou não pertence ao personagem.'} end
     local data = describe(src,row,tonumber(row.state)==2 and impound(clean(row.plate)) or nil)
-    if pr_lib.framework.GetIdentifier(src) ~= citizenid then return {status='error',message='Personagem alterado.'} end
+    if phoneOwner(src) ~= citizenid then return {status='error',message='Aparelho ativo alterado.'} end
     if not data.destination then return {status='error',message=data.routeUnavailable} end
     return {status='ok',data=data.destination}
 end)

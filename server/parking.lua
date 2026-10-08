@@ -79,7 +79,10 @@ local function save(s)
     sessions[s.plate] = s
 end
 local function gameClockMinute()
-    local current = GlobalState.currentTime
+    local api=pr_lib.weather
+    if not api or type(api.GetSnapshot)~='function' then return nil end
+    local ok,snapshot = api.GetSnapshot()
+    local current = ok and snapshot.currentTime
     local hour = type(current) == 'table' and tonumber(current.hour)
     local minute = type(current) == 'table' and tonumber(current.minute)
     if not hour or not minute then return nil end

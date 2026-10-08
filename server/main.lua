@@ -975,6 +975,7 @@ RegisterNetEvent("forge_garage:server:setPlayerGarageBucket", function(bucket)
     local bucketId = tonumber(bucket) or 0
 
     SetPlayerRoutingBucket(src, bucketId)
+    TriggerEvent('qbx_core:server:bucketChanged', src, bucketId)
 
     if playerPed and playerPed ~= 0 then
         SetEntityRoutingBucket(playerPed, bucketId)
