@@ -1,4 +1,4 @@
-local psHousing = GetResourceState("ps-housing") ~= "missing"
+local forgeHousing = GetResourceState("forge-housing") ~= "missing"
 local qbHousing = GetResourceState("qb-houses") ~= "missing"
 local qsHousing = GetResourceState("qs-housing") ~= "missing"
 local isServer = IsDuplicityVersion()
@@ -7,8 +7,8 @@ local lasthouse = nil
 local houseZone = {}
 local isOwner = false
 
---- for qb-houses or ps-housing
-if qbHousing or psHousing or qsHousing then
+--- for qb-houses or forge-housing
+if qbHousing or forgeHousing or qsHousing then
     if not isServer then
         RegisterNetEvent('qb-garages:client:setHouseGarage', function(house, hasKey)
             local HG = Config.HouseGarages[house]
@@ -70,7 +70,7 @@ if qbHousing or psHousing or qsHousing then
             TriggerServerEvent('forge_garage:server:addHouseGarage', house, garageInfo)
         end)
         
-        if psHousing or qsHousing then
+        if forgeHousing or qsHousing then
             RegisterNetEvent('qb-garages:client:removeHouseGarage', function(house)
                 Config.HouseGarages[house] = nil
             end)
@@ -78,22 +78,8 @@ if qbHousing or psHousing or qsHousing then
     else
         --- check house owner
         GarageBridge.callback.register('forge_garage:cb_server:getOwnedHouse', function(src, house)
-            local key = false
-            local player = pr_lib.framework.GetPlayer(src)
-            if not player then return false end
-            
-            local license = player.PlayerData and player.PlayerData.license or player.license or ""
-            local cid = player.PlayerData and player.PlayerData.citizenid or player.citizenid or ""
-            local houseKey = false
-            
-            if GetResourceState("qb-houses") ~= "missing" then
-                houseKey = exports['ps-housing']:IsOwner(src, house)
-            elseif GetResourceState("ps-housing") ~= "missing" then
-                houseKey = exports['ps-housing']:IsOwner(src, house)
-            end
-        
-            if houseKey then key = not key end
-            return key
+            if not pr_lib.framework.GetPlayer(src) then return false end
+            return not not pr_lib.housing.IsOwner(src, house)
         end)
         
         --- Call from qb-phone

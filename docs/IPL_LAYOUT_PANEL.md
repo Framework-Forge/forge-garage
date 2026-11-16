@@ -53,7 +53,6 @@ Faça em uma garagem de teste, sem veículos/jogadores no interior durante o rei
 
 ## Validação automatizada
 
-`tests/ipl_visual.lua`, executado em Lua 5.4 com serviços/natives simulados: permissões, distância, bucket, valores inválidos, conflito de revisões, falha de escrita, persistência isolada, criação/remoção do ponto, limites de cores, cancelamento de preview, menu pai e atualização de aparência entre instâncias.
 
 Sintaxe Lua e as suítes existentes de migração, banco, parquímetro e zonas passaram. Renderização e interação real do FiveM dependem do roteiro acima; não foram executadas nesta entrega.
 

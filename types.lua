@@ -45,7 +45,7 @@
 ---@field heading number --- NPC heading from DevTools
 ---@field radius number --- NPC target distance, between 1 and 3 meters
 ---@field access "public"|"residential"
----@field propertyId? string --- ps-housing property; requires its authoritative access permission
+---@field propertyId? string --- forge-housing property; requires its authoritative access permission
 
 ---@class GarageIplEntry
 ---@field label string --- Friendly entry name

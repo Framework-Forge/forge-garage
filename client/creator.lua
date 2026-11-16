@@ -1710,7 +1710,7 @@ local function visualManagerOptions(self)
                 properties[#properties+1] = { value = tostring(row.property_id), label = ('Imóvel %s — %s'):format(row.property_id, row.street or '') }
             end
             if #properties == 0 then
-                utils.notify('Nenhum imóvel disponível no ps-housing.', 'error')
+                utils.notify('Nenhum imóvel disponível no forge-housing.', 'error')
                 return reopen()
             end
             local selected = pr_lib.inputDialog('Vincular residência', {

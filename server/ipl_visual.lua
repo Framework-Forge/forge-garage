@@ -28,8 +28,8 @@ local function access(src, name)
     local data = player and (player.PlayerData or player)
     if not data or not groupAllowed(garage.job, data.job) or not groupAllowed(garage.gang, data.gang) then return nil, 'Sem acesso a esta garagem.' end
     if manager.access == 'residential' then
-        if GetResourceState('ps-housing') ~= 'started' then return nil, 'Sistema residencial indisponível.' end
-        local ok, allowed = pcall(function() return exports['ps-housing']:IsOwner(src, manager.propertyId) end)
+        if not pr_lib.housing.getProvider() then return nil, 'Sistema residencial indisponível.' end
+        local ok, allowed = pcall(pr_lib.housing.IsOwner, src, manager.propertyId)
         if not ok or not allowed then return nil, 'Somente moradores autorizados podem alterar este interior.' end
     end
     return ipl
@@ -67,7 +67,7 @@ GarageBridge.callback.register('forge_garage:visual:save', function(src, name, v
 end)
 GarageBridge.callback.register('forge_garage:visual:properties', function(src)
     if not admin(src) then return {} end
-    if GetResourceState('ps-housing') ~= 'started' then return {} end
+    if not pr_lib.housing.getProvider() then return {} end
     return pr_lib.database.query('SELECT property_id, street FROM properties ORDER BY property_id') or {}
 end)
 GarageBridge.callback.register('forge_garage:visual:configure', function(src, name, manager)
@@ -79,7 +79,7 @@ GarageBridge.callback.register('forge_garage:visual:configure', function(src, na
         value = GarageVisual.manager(manager)
         if not value or not GarageVisual.catalog(garage.ipl) then return { success = false, message = 'Ponto inválido ou modelo sem personalização cadastrada.' } end
         if value.access == 'residential' then
-            if GetResourceState('ps-housing') ~= 'started' or not pr_lib.database.scalar('SELECT property_id FROM properties WHERE property_id = ?', { value.propertyId }) then
+            if not pr_lib.housing.getProvider() or not pr_lib.database.scalar('SELECT property_id FROM properties WHERE property_id = ?', { value.propertyId }) then
                 return { success = false, message = 'Imóvel não encontrado.' }
             end
         end
