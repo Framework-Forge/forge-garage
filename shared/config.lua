@@ -1,4 +1,5 @@
 Config = {}
+Config.VersionCheck = true
 
 -- Load garage and vehicle data from JSON files
 GarageZone = GarageBridge.loadJson('data.garages') ---@type table<string, GarageData>

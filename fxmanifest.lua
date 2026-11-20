@@ -1,6 +1,6 @@
 fx_version("cerulean")
 game("gta5")
-version("1.4.5")
+version("1.4.7")
 author("Reyghita Hafizh Firmanda")
 description("Garage system for ESX & QBCore made by RHD Team")
 
